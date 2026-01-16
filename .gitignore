@@ -29,6 +29,9 @@ db.sqlite3-journal
 .env
 .env.local
 .env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # IDE
 .vscode/
@@ -36,21 +39,35 @@ db.sqlite3-journal
 *.swp
 *.swo
 *~
-.DS_Store
+*.sublime-project
+*.sublime-workspace
 
-# React Native
+# OS / OSX
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.AppleDouble
+.LSOverride
+
+# React Native / Node.js
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+lerna-debug.log*
 .pnpm-debug.log*
 
 # React Native / Metro
 .metro-health-check*
+.metro/
+watchman/
 
-# OS
-.DS_Store
-*.pem
+# Bundle artifacts
+*.jsbundle
 
 # Android
 *.apk
@@ -64,13 +81,16 @@ out/
 .gradle/
 local.properties
 *.iml
-.idea/
 *.hprof
 .cxx/
 *.keystore
 !debug.keystore
+android/app/build/
+android/build/
+android/.gradle/
+android/app/.cxx/
 
-# iOS
+# iOS / Xcode
 *.pbxuser
 !default.pbxuser
 *.mode1v3
@@ -82,21 +102,36 @@ local.properties
 xcuserdata/
 *.xccheckout
 *.moved-aside
-DerivedData
+DerivedData/
 *.hmap
 *.ipa
 *.xcuserstate
+*.xcworkspace
+!*.xcworkspace/contents.xcworkspacedata
 project.xcworkspace/
 ios/.xcode.env.local
-
-# Bundle artifacts
-*.jsbundle
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
+ios/build/
 
 # CocoaPods
 ios/Pods/
+/ios/Pods/
 ios/Podfile.lock
+/vendor/bundle/
+.bundle/
+Gemfile.lock
+
+# fastlane
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots
+**/fastlane/test_output
+
+# Testing
+/coverage
 
 # Temporary files
 *.tmp
 *.temp
-
+*.pem
