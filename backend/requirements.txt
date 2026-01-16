@@ -1,0 +1,30 @@
+# Django 백엔드
+Django>=5.0.0
+djangorestframework>=3.14.0
+django-cors-headers>=4.3.0
+
+# 데이터베이스
+psycopg2-binary>=2.9.9
+redis>=5.0.0
+
+# WebSocket
+channels>=4.0.0
+channels-redis>=4.1.0
+
+# 인증 및 보안
+djangorestframework-simplejwt>=5.3.0
+cryptography>=41.0.0
+
+# 위치 계산
+geopy>=2.4.0
+
+# 환경 변수 관리
+python-decouple>=3.8
+
+# AWS SNS (푸시 알림)
+boto3>=1.29.0
+
+# 개발 도구
+ipython>=8.17.0
+django-extensions>=3.2.0
+
