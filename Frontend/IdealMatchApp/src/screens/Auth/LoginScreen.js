@@ -8,18 +8,23 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  TextInput,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
-import { Input, Button } from '../../components/common';
 import { COLORS } from '../../constants';
+
+const LOGO_IMAGE = require('../../images/login_logo.png');
 
 const LoginScreen = ({ navigation, onLogin }) => {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
     if (!userId.trim()) {
-      Alert.alert('알림', 'ID를 입력해주세요.');
+      Alert.alert('알림', 'ID 또는 이메일을 입력해주세요.');
       return;
     }
 
@@ -46,67 +51,102 @@ const LoginScreen = ({ navigation, onLogin }) => {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        {/* 로고/타이틀 */}
+        {/* 헤더 - 로고 이미지 */}
         <View style={styles.header}>
-          <Text style={styles.logo}>💝</Text>
-          <Text style={styles.title}>이상형 매칭</Text>
-          <Text style={styles.subtitle}>주변에서 이상형을 만나보세요</Text>
+          <View style={styles.logoContainer}>
+            <Image
+              source={LOGO_IMAGE}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
+          <Text style={styles.title}>Wwong</Text>
+          <Text style={styles.subtitle}>Spark Something New</Text>
         </View>
 
         {/* 로그인 폼 */}
         <View style={styles.form}>
-          <Input
-            label="아이디"
-            value={userId}
-            onChangeText={setUserId}
-            placeholder="아이디를 입력하세요"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
+          {/* ID or Email */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>ID OR EMAIL</Text>
+            <TextInput
+              style={styles.input}
+              value={userId}
+              onChangeText={setUserId}
+              placeholder="hello@example.com"
+              placeholderTextColor="#CBD5E1"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="email-address"
+            />
+          </View>
 
-          <Input
-            label="비밀번호"
-            value={password}
-            onChangeText={setPassword}
-            placeholder="비밀번호를 입력하세요"
-            secureTextEntry
-            autoCapitalize="none"
-          />
+          {/* Password */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>PASSWORD</Text>
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.input}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="••••••••"
+                placeholderTextColor="#CBD5E1"
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={styles.eyeButton}
+                onPress={() => setShowPassword(!showPassword)}
+              >
+                <Text style={styles.eyeIcon}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
 
-          <Button
-            title="로그인"
-            onPress={handleLogin}
-            loading={loading}
-            disabled={loading}
-            style={styles.loginButton}
-          />
-        </View>
-
-        {/* 하단 버튼들 */}
-        <View style={styles.footer}>
+          {/* Forgot password */}
           <TouchableOpacity
-            onPress={() => navigation.navigate('Signup')}
-            style={styles.footerButton}
-          >
-            <Text style={styles.footerButtonText}>회원가입</Text>
-          </TouchableOpacity>
-
-          <View style={styles.divider} />
-
-          <TouchableOpacity
+            style={styles.forgotPassword}
             onPress={() => navigation.navigate('PasswordReset')}
-            style={styles.footerButton}
           >
-            <Text style={styles.footerButtonText}>비밀번호 재설정</Text>
+            <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+          </TouchableOpacity>
+
+          {/* Login Button */}
+          <TouchableOpacity
+            style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.9}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Text style={styles.loginButtonText}>Log In</Text>
+                <Text style={styles.arrowIcon}>→</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
 
-        {/* 테스트 계정 안내 */}
-        <View style={styles.testInfo}>
-          <Text style={styles.testInfoText}>테스트 계정</Text>
-          <Text style={styles.testInfoDetail}>ID: test1, PW: test123</Text>
-          <Text style={styles.testInfoDetail}>ID: test2, PW: test123</Text>
+        {/* Create Account */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
+            New to Wwong?{' '}
+            <Text
+              style={styles.footerLink}
+              onPress={() => navigation.navigate('Signup')}
+            >
+              Create Account
+            </Text>
+          </Text>
+        </View>
+
+        {/* 하단 인디케이터 */}
+        <View style={styles.bottomIndicator}>
+          <View style={styles.indicatorBar} />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -116,73 +156,155 @@ const LoginScreen = ({ navigation, onLogin }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.accent || '#FFF5F7',
   },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 20,
+    paddingHorizontal: 32,
+    paddingTop: 48,
+    paddingBottom: 32,
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
   },
   header: {
     alignItems: 'center',
-    marginBottom: 50,
+    marginBottom: 56,
+  },
+  logoContainer: {
+    width: 120,
+    height: 120,
+    marginBottom: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   logo: {
-    fontSize: 80,
-    marginBottom: 20,
+    width: '100%',
+    height: '100%',
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-    marginBottom: 10,
+    fontSize: 48,
+    fontWeight: '800',
+    color: COLORS.text || '#0F172A',
+    marginBottom: 8,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 16,
-    color: COLORS.darkgray,
+    fontSize: 10,
+    fontWeight: '500',
+    color: COLORS.textSecondary || '#94A3B8',
+    letterSpacing: 3.2,
+    textTransform: 'uppercase',
   },
   form: {
-    marginBottom: 30,
+    width: '100%',
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  label: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.textSecondary || '#94A3B8',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+  input: {
+    width: '100%',
+    height: 60,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border || 'rgba(255, 182, 193, 0.5)',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 16,
+    color: COLORS.text || '#0F172A',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12.5,
+    elevation: 2,
+  },
+  passwordContainer: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  eyeButton: {
+    position: 'absolute',
+    right: 24,
+    padding: 8,
+  },
+  eyeIcon: {
+    fontSize: 20,
+    color: '#CBD5E1',
+  },
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: 8,
+    marginBottom: 24,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textSecondary || '#94A3B8',
   },
   loginButton: {
-    marginTop: 10,
-  },
-  footer: {
+    width: '100%',
+    height: 64,
+    backgroundColor: COLORS.primary || '#FF7EA6',
+    borderRadius: 24,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 30,
+    gap: 8,
+    shadowColor: COLORS.primary || '#FF7EA6',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.4,
+    shadowRadius: 18,
+    elevation: 8,
   },
-  footerButton: {
-    padding: 10,
+  loginButtonDisabled: {
+    opacity: 0.7,
   },
-  footerButtonText: {
-    color: COLORS.primary,
-    fontSize: 14,
-    fontWeight: '600',
+  loginButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
   },
-  divider: {
-    width: 1,
-    height: 16,
-    backgroundColor: COLORS.lightgray,
-    marginHorizontal: 20,
-  },
-  testInfo: {
-    alignItems: 'center',
-    marginTop: 20,
-    padding: 15,
-    backgroundColor: COLORS.white,
-    borderRadius: 10,
-  },
-  testInfoText: {
-    fontSize: 12,
-    color: COLORS.darkgray,
+  arrowIcon: {
+    color: '#FFFFFF',
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 5,
   },
-  testInfoDetail: {
-    fontSize: 11,
-    color: COLORS.darkgray,
+  footer: {
+    marginTop: 40,
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.textSecondary || '#94A3B8',
+  },
+  footerLink: {
+    color: COLORS.primary || '#FF7EA6',
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+    textDecorationColor: COLORS.primary || '#FF7EA6',
+  },
+  bottomIndicator: {
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  indicatorBar: {
+    width: 128,
+    height: 6,
+    backgroundColor: 'rgba(255, 182, 193, 0.3)',
+    borderRadius: 9999,
   },
 });
 

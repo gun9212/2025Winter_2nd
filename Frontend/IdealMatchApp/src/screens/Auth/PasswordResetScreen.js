@@ -7,10 +7,15 @@ import {
   Platform,
   ScrollView,
   Alert,
+  TextInput,
+  TouchableOpacity,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
-import { Input, Button } from '../../components/common';
 import { MockAuthService } from '../../services/mock';
 import { COLORS } from '../../constants';
+
+const LOGO_IMAGE = require('../../images/login_logo.png');
 
 const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
   const [step, setStep] = useState(1); // 1: 본인확인, 2: 비밀번호 재설정
@@ -20,10 +25,12 @@ const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
+  const [verified, setVerified] = useState(false);
 
   // Step 2: 비밀번호 재설정
   const [newPassword, setNewPassword] = useState('');
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
@@ -65,8 +72,11 @@ const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
     setLoading(true);
     try {
       await onVerifyUser(userId.trim(), phoneNumber, verificationCode);
-      setStep(2); // 본인 확인 완료 → 비밀번호 재설정 단계로
-      Alert.alert('본인 확인 완료', '새로운 비밀번호를 입력해주세요.');
+      setVerified(true);
+      // 잠시 후 Step 2로 이동
+      setTimeout(() => {
+        setStep(2);
+      }, 1500);
     } catch (error) {
       Alert.alert('오류', error.message || '본인 확인에 실패했습니다.');
     } finally {
@@ -114,107 +124,188 @@ const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
+        {/* 헤더 - 로고 */}
         <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <Image
+              source={LOGO_IMAGE}
+              style={styles.logo}
+              resizeMode="contain"
+            />
+          </View>
           <Text style={styles.title}>비밀번호 재설정</Text>
           <Text style={styles.subtitle}>
-            {step === 1 ? '본인 확인을 진행해주세요' : '새로운 비밀번호를 입력하세요'}
+            {step === 1 ? 'Please verify your identity' : 'Create new password'}
           </Text>
         </View>
 
+        {/* 폼 */}
         <View style={styles.form}>
           {step === 1 ? (
             <>
               {/* Step 1: 본인 확인 */}
-              <Input
-                label="아이디"
-                value={userId}
-                onChangeText={setUserId}
-                placeholder="아이디를 입력하세요"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
+              <View style={styles.verifySection}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>ID</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={userId}
+                    onChangeText={setUserId}
+                    placeholder="Enter your ID"
+                    placeholderTextColor="#CBD5E1"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    textAlign="center"
+                  />
+                </View>
 
-              <Input
-                label="전화번호"
-                value={phoneNumber}
-                onChangeText={(text) => setPhoneNumber(text.replace(/[^0-9]/g, ''))}
-                placeholder="01012345678"
-                keyboardType="phone-pad"
-                maxLength={11}
-              />
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>PHONE NUMBER</Text>
+                  <View style={styles.phoneContainer}>
+                    <TextInput
+                      style={[styles.input, styles.phoneInput]}
+                      value={phoneNumber}
+                      onChangeText={(text) => setPhoneNumber(text.replace(/[^0-9]/g, ''))}
+                      placeholder="010-0000-0000"
+                      placeholderTextColor="#CBD5E1"
+                      keyboardType="phone-pad"
+                      maxLength={11}
+                      textAlign="center"
+                    />
+                    <TouchableOpacity
+                      style={[styles.sendCodeButton, (sendingCode || !phoneNumber) && styles.sendCodeButtonDisabled]}
+                      onPress={handleSendCode}
+                      disabled={sendingCode || !phoneNumber}
+                    >
+                      {sendingCode ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.sendCodeButtonText}>Send Code</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
 
-              <Button
-                title={codeSent ? '인증번호 재전송' : '인증번호 전송'}
-                onPress={handleSendCode}
-                loading={sendingCode}
-                disabled={sendingCode || !phoneNumber}
-                style={styles.codeButton}
-              />
+                {codeSent && (
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>VERIFICATION CODE</Text>
+                    <TextInput
+                      style={[styles.input, styles.codeInput]}
+                      value={verificationCode}
+                      onChangeText={setVerificationCode}
+                      placeholder="000000"
+                      placeholderTextColor="#CBD5E1"
+                      keyboardType="number-pad"
+                      maxLength={6}
+                      textAlign="center"
+                    />
+                  </View>
+                )}
 
-              {codeSent && (
-                <Input
-                  label="인증번호"
-                  value={verificationCode}
-                  onChangeText={setVerificationCode}
-                  placeholder="123456"
-                  keyboardType="number-pad"
-                  maxLength={6}
-                />
+                <TouchableOpacity
+                  style={[styles.verifyButton, loading && styles.verifyButtonDisabled]}
+                  onPress={handleVerify}
+                  disabled={loading || !codeSent || !verificationCode}
+                  activeOpacity={0.9}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.verifyButtonText}>Verify Identity</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* 인증 성공 표시 */}
+              {verified && (
+                <View style={styles.verificationSuccess}>
+                  <View style={styles.checkCircle}>
+                    <Text style={styles.checkIcon}>✓</Text>
+                  </View>
+                  <Text style={styles.verificationText}>Identity verified successfully</Text>
+                </View>
               )}
-
-              <Button
-                title="본인 확인"
-                onPress={handleVerify}
-                loading={loading}
-                disabled={loading}
-                style={styles.verifyButton}
-              />
             </>
           ) : (
             <>
               {/* Step 2: 비밀번호 재설정 */}
-              <View style={styles.successInfo}>
-                <Text style={styles.successIcon}>✅</Text>
-                <Text style={styles.successText}>본인 확인이 완료되었습니다</Text>
-                <Text style={styles.successSubtext}>ID: {userId}</Text>
+              <View style={styles.verificationSuccess}>
+                <View style={styles.checkCircle}>
+                  <Text style={styles.checkIcon}>✓</Text>
+                </View>
+                <Text style={styles.verificationText}>Identity verified successfully</Text>
               </View>
 
-              <Input
-                label="새 비밀번호"
-                value={newPassword}
-                onChangeText={setNewPassword}
-                placeholder="6자 이상"
-                secureTextEntry
-                autoCapitalize="none"
-              />
+              <View style={styles.passwordSection}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>NEW PASSWORD</Text>
+                  <View style={styles.passwordContainer}>
+                    <TextInput
+                      style={styles.input}
+                      value={newPassword}
+                      onChangeText={setNewPassword}
+                      placeholder="••••••••"
+                      placeholderTextColor="#CBD5E1"
+                      secureTextEntry={!showNewPassword}
+                      autoCapitalize="none"
+                      textAlign="center"
+                    />
+                    <TouchableOpacity
+                      style={styles.eyeButton}
+                      onPress={() => setShowNewPassword(!showNewPassword)}
+                    >
+                      <Text style={styles.eyeIcon}>{showNewPassword ? '👁️' : '👁️‍🗨️'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
 
-              <Input
-                label="새 비밀번호 확인"
-                value={newPasswordConfirm}
-                onChangeText={setNewPasswordConfirm}
-                placeholder="비밀번호를 다시 입력하세요"
-                secureTextEntry
-                autoCapitalize="none"
-              />
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>CONFIRM PASSWORD</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={newPasswordConfirm}
+                    onChangeText={setNewPasswordConfirm}
+                    placeholder="••••••••"
+                    placeholderTextColor="#CBD5E1"
+                    secureTextEntry
+                    autoCapitalize="none"
+                    textAlign="center"
+                  />
+                </View>
 
-              <Button
-                title="비밀번호 재설정"
-                onPress={handleResetPassword}
-                loading={loading}
-                disabled={loading}
-                style={styles.resetButton}
-              />
+                <TouchableOpacity
+                  style={[styles.resetButton, loading && styles.resetButtonDisabled]}
+                  onPress={handleResetPassword}
+                  disabled={loading}
+                  activeOpacity={0.9}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.resetButtonText}>Reset Password</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </>
           )}
+        </View>
 
-          {/* 로그인으로 돌아가기 */}
-          <Button
-            title="로그인으로 돌아가기"
+        {/* Back to Login */}
+        <View style={styles.footer}>
+          <TouchableOpacity
+            style={styles.backLink}
             onPress={() => navigation.navigate('Login')}
-            style={styles.backButton}
-            textStyle={styles.backButtonText}
-          />
+          >
+            <Text style={styles.backArrow}>←</Text>
+            <Text style={styles.backText}>Back to Login</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* 하단 인디케이터 */}
+        <View style={styles.bottomIndicator}>
+          <View style={styles.indicatorBar} />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -224,69 +315,244 @@ const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.accent || '#FFF5F7',
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 20,
+    justifyContent: 'center',
+    paddingHorizontal: 32,
     paddingTop: 60,
+    paddingBottom: 32,
+    maxWidth: 480,
+    width: '100%',
+    alignSelf: 'center',
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 32,
+  },
+  logoContainer: {
+    width: 56,
+    height: 56,
+    marginBottom: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logo: {
+    width: '100%',
+    height: '100%',
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-    marginBottom: 10,
+    fontSize: 24,
+    fontWeight: '800',
+    color: COLORS.text || '#0F172A',
+    marginBottom: 4,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 16,
-    color: COLORS.darkgray,
-    textAlign: 'center',
+    fontSize: 10,
+    fontWeight: '500',
+    color: COLORS.textSecondary || '#94A3B8',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
   },
   form: {
-    marginBottom: 30,
+    width: '100%',
   },
-  codeButton: {
-    backgroundColor: COLORS.secondary,
-    marginBottom: 15,
+  verifySection: {
+    marginBottom: 16,
+  },
+  passwordSection: {
+    marginTop: 8,
+  },
+  inputGroup: {
+    marginBottom: 12,
+  },
+  label: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.textSecondary || '#94A3B8',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    textAlign: 'center',
+    paddingBottom: 4,
+  },
+  input: {
+    width: '100%',
+    height: 48,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: COLORS.border || 'rgba(255, 182, 193, 0.5)',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    fontSize: 16,
+    color: COLORS.text || '#0F172A',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12.5,
+    elevation: 2,
+  },
+  phoneContainer: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  phoneInput: {
+    paddingRight: 120,
+  },
+  sendCodeButton: {
+    position: 'absolute',
+    right: 6,
+    height: 36,
+    paddingHorizontal: 12,
+    backgroundColor: COLORS.primary || '#FF7EA6',
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: COLORS.primary || '#FF7EA6',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  sendCodeButtonDisabled: {
+    opacity: 0.5,
+  },
+  sendCodeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  codeInput: {
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 18,
+    letterSpacing: 8,
+  },
+  passwordContainer: {
+    position: 'relative',
+  },
+  eyeButton: {
+    position: 'absolute',
+    right: 20,
+    top: 14,
+    padding: 8,
+  },
+  eyeIcon: {
+    fontSize: 18,
+    color: '#CBD5E1',
   },
   verifyButton: {
-    marginTop: 10,
-  },
-  successInfo: {
+    width: '100%',
+    height: 48,
+    backgroundColor: COLORS.primary || '#FF7EA6',
+    borderRadius: 24,
+    justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: COLORS.white,
-    borderRadius: 10,
-    marginBottom: 30,
+    marginTop: 8,
+    shadowColor: COLORS.primary || '#FF7EA6',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+    elevation: 6,
   },
-  successIcon: {
-    fontSize: 50,
-    marginBottom: 10,
+  verifyButtonDisabled: {
+    opacity: 0.5,
   },
-  successText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 5,
-  },
-  successSubtext: {
+  verifyButtonText: {
+    color: '#FFFFFF',
     fontSize: 14,
-    color: COLORS.darkgray,
+    fontWeight: '700',
+  },
+  verificationSuccess: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 182, 193, 0.5)',
+    borderRadius: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  checkCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#D1FAE5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkIcon: {
+    fontSize: 14,
+    color: '#10B981',
+    fontWeight: 'bold',
+  },
+  verificationText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
   },
   resetButton: {
-    marginTop: 10,
-    marginBottom: 10,
+    width: '100%',
+    height: 56,
+    backgroundColor: '#0F172A',
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 15,
+    elevation: 8,
   },
-  backButton: {
-    backgroundColor: 'transparent',
-    marginTop: 10,
+  resetButtonDisabled: {
+    opacity: 0.5,
   },
-  backButtonText: {
-    color: COLORS.primary,
+  resetButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  footer: {
+    marginTop: 'auto',
+    paddingVertical: 32,
+    alignItems: 'center',
+  },
+  backLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  backArrow: {
+    fontSize: 14,
+    color: COLORS.textSecondary || '#94A3B8',
+  },
+  backText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: COLORS.textSecondary || '#94A3B8',
+  },
+  bottomIndicator: {
+    alignItems: 'center',
+    paddingBottom: 8,
+  },
+  indicatorBar: {
+    width: 128,
+    height: 6,
+    backgroundColor: 'rgba(255, 182, 193, 0.3)',
+    borderRadius: 9999,
   },
 });
 
