@@ -396,6 +396,9 @@ PODS:
     - React-perflogger (= 0.72.6)
   - RNCAsyncStorage (2.2.0):
     - React-Core
+  - RNCMaskedView (0.3.2):
+    - RCT-Folly (= 2021.07.22.00)
+    - React-Core
   - RNGestureHandler (2.30.0):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
@@ -411,6 +414,9 @@ PODS:
     - React-Core
     - React-RCTImage
   - RNSVG (15.15.1):
+    - React-Core
+  - RNVectorIcons (10.3.0):
+    - RCT-Folly (= 2021.07.22.00)
     - React-Core
   - SocketRocket (0.6.1)
   - Yoga (1.14.0)
@@ -458,11 +464,13 @@ DEPENDENCIES:
   - React-utils (from `../node_modules/react-native/ReactCommon/react/utils`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
   - "RNCAsyncStorage (from `../node_modules/@react-native-async-storage/async-storage`)"
+  - "RNCMaskedView (from `../node_modules/@react-native-masked-view/masked-view`)"
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - "RNNotifee (from `../node_modules/@notifee/react-native`)"
   - RNReactNativeHapticFeedback (from `../node_modules/react-native-haptic-feedback`)
   - RNScreens (from `../node_modules/react-native-screens`)
   - RNSVG (from `../node_modules/react-native-svg`)
+  - RNVectorIcons (from `../node_modules/react-native-vector-icons`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
@@ -553,6 +561,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon"
   RNCAsyncStorage:
     :path: "../node_modules/@react-native-async-storage/async-storage"
+  RNCMaskedView:
+    :path: "../node_modules/@react-native-masked-view/masked-view"
   RNGestureHandler:
     :path: "../node_modules/react-native-gesture-handler"
   RNNotifee:
@@ -563,6 +573,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-screens"
   RNSVG:
     :path: "../node_modules/react-native-svg"
+  RNVectorIcons:
+    :path: "../node_modules/react-native-vector-icons"
   Yoga:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
@@ -609,14 +621,16 @@ SPEC CHECKSUMS:
   React-utils: ee4e6bf16d6882500500d517d36f9035874c5f6a
   ReactCommon: 3a7c359a28c6973c304fb1b0152b096b195dd5fc
   RNCAsyncStorage: b44e8a4e798c3e1f56bffccd0f591f674fb9198f
+  RNCMaskedView: d261a7d0cc486eed758aad47afc406eff06a5b3c
   RNGestureHandler: 1141f6753c7cd749a20bbd46d2010968dffe3fc1
   RNNotifee: 5e3b271e8ea7456a36eec994085543c9adca9168
   RNReactNativeHapticFeedback: dda7ccd00a9b9e16b2c2e2282147ab5300344482
   RNScreens: c6ae949c292bee8ed7f355ab2adcfc9a51629951
   RNSVG: 843cb94bebafcbd6e86842ac76d2c5d4836ba0a0
+  RNVectorIcons: 2a7ec3ea0e8af048e16f8d30bfaedc21d649c502
   SocketRocket: f32cd54efbe0f095c4d7594881e52619cfe80b17
   Yoga: b76f1acfda8212aa16b7e26bcce3983230c82603
 
-PODFILE CHECKSUM: fc98e30711e2890823a802de523cb54c1c54a390
+PODFILE CHECKSUM: 65a66c207b6a6fb89c4bdeb6b52d302cdff51f90
 
 COCOAPODS: 1.16.2

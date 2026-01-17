@@ -7,6 +7,8 @@ const KEYS = {
   PHONE_NUMBER: '@phone_number',
   IS_AUTHENTICATED: '@is_authenticated',
   MATCH_HISTORY: '@match_history',
+  ACCESS_TOKEN: '@access_token', // JWT Access Token
+  REFRESH_TOKEN: '@refresh_token', // JWT Refresh Token
 };
 
 // userId별 키 생성 헬퍼
@@ -125,6 +127,27 @@ export const StorageService = {
   async getMatchHistory() {
     const data = await AsyncStorage.getItem(KEYS.MATCH_HISTORY);
     return data ? JSON.parse(data) : [];
+  },
+  
+  // ========== JWT 토큰 관리 ==========
+  
+  async saveTokens(accessToken, refreshToken) {
+    await AsyncStorage.setItem(KEYS.ACCESS_TOKEN, accessToken);
+    if (refreshToken) {
+      await AsyncStorage.setItem(KEYS.REFRESH_TOKEN, refreshToken);
+    }
+  },
+  
+  async getAccessToken() {
+    return await AsyncStorage.getItem(KEYS.ACCESS_TOKEN);
+  },
+  
+  async getRefreshToken() {
+    return await AsyncStorage.getItem(KEYS.REFRESH_TOKEN);
+  },
+  
+  async clearTokens() {
+    await AsyncStorage.multiRemove([KEYS.ACCESS_TOKEN, KEYS.REFRESH_TOKEN]);
   },
   
   // 전체 삭제

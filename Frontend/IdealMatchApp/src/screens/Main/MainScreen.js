@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { AuthContext } from '../../context';
 import { locationService } from '../../services/location';
-import { mockApiClient } from '../../services/api';
+import { mockApiClient, apiClient } from '../../services/api';
 import { hapticService } from '../../services/haptic';
 import { notificationService } from '../../services/notification';
 import { HeartbeatAnimation, GlowingHeart } from '../../components/animations';
@@ -195,17 +195,29 @@ const MainScreen = ({ navigation }) => {
 
   const sendLocationToServer = async (currentLocation) => {
     try {
-      console.log('🌐 서버로 위치 전송 (시뮬레이션):', {
-        userId: userProfile?.age + '_' + userProfile?.gender,
-        latitude: currentLocation.latitude,
-        longitude: currentLocation.longitude,
-        timestamp: new Date().toISOString(),
+      console.log('🌐 서버로 위치 전송 중...', {
+        latitude: currentLocation.latitude.toFixed(6),
+        longitude: currentLocation.longitude.toFixed(6),
       });
 
-      return { success: true };
+      const result = await apiClient.updateLocation(
+        currentLocation.latitude,
+        currentLocation.longitude
+      );
+
+      if (result.success) {
+        console.log('✅ 위치 업데이트 성공:', result.data);
+      } else {
+        console.error('❌ 위치 업데이트 실패:', result.error);
+      }
+
+      return result;
     } catch (error) {
       console.error('❌ 서버 전송 오류:', error);
-      return { success: false };
+      return { 
+        success: false, 
+        error: error.message || '알 수 없는 오류가 발생했습니다.' 
+      };
     }
   };
 
@@ -366,8 +378,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingTop: 48,
-    paddingBottom: 16,
+    paddingTop: 60,
+    paddingBottom: 20,
     backgroundColor: 'rgba(255, 240, 245, 0.8)',
   },
   headerLeft: {

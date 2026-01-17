@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,40 @@ const SignupScreen = ({ navigation, onSignup }) => {
   const [codeVerified, setCodeVerified] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
+  const [timer, setTimer] = useState(0); // 타이머 (초 단위)
+  const timerRef = useRef(null);
+
+  // 타이머 카운트다운 효과
+  useEffect(() => {
+    if (timer > 0) {
+      timerRef.current = setTimeout(() => {
+        setTimer(timer - 1);
+      }, 1000);
+    } else if (timer === 0 && timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, [timer]);
+
+  // 컴포넌트 언마운트 시 타이머 정리
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const handleSendCode = async () => {
     if (!phoneNumber || phoneNumber.length < 10) {
@@ -34,10 +68,16 @@ const SignupScreen = ({ navigation, onSignup }) => {
       return;
     }
 
+    // 기존 타이머 정리
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+
     setSendingCode(true);
     try {
       await MockAuthService.sendVerificationCode(phoneNumber);
       setCodeSent(true);
+      setTimer(120); // 2분(120초) 타이머 초기화 및 시작
       Alert.alert('인증번호 전송', `${phoneNumber}로 인증번호가 전송되었습니다.\n테스트 코드: 123456`);
     } catch (error) {
       Alert.alert('오류', error.message || '인증번호 전송에 실패했습니다.');
@@ -204,26 +244,33 @@ const SignupScreen = ({ navigation, onSignup }) => {
           {codeSent && (
             <View style={styles.inputGroup}>
               <Text style={styles.label}>VERIFICATION CODE</Text>
-              <TextInput
-                style={[styles.input, styles.codeInput]}
-                value={verificationCode}
-                onChangeText={(text) => {
-                  setVerificationCode(text);
-                  if (text.length === 6) {
-                    // 자동으로 인증 확인
-                    if (text === '123456') {
-                      setCodeVerified(true);
+              <View style={styles.codeInputContainer}>
+                <TextInput
+                  style={[styles.input, styles.codeInput]}
+                  value={verificationCode}
+                  onChangeText={(text) => {
+                    setVerificationCode(text);
+                    if (text.length === 6) {
+                      // 자동으로 인증 확인
+                      if (text === '123456') {
+                        setCodeVerified(true);
+                      }
+                    } else {
+                      setCodeVerified(false);
                     }
-                  } else {
-                    setCodeVerified(false);
-                  }
-                }}
-                placeholder="123456"
-                placeholderTextColor="#CBD5E1"
-                keyboardType="number-pad"
-                maxLength={6}
-                textAlign="center"
-              />
+                  }}
+                  placeholder="123456"
+                  placeholderTextColor="#CBD5E1"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  textAlign="center"
+                />
+                {timer > 0 && (
+                  <View style={styles.timerContainer}>
+                    <Text style={styles.timerText}>{formatTime(timer)}</Text>
+                  </View>
+                )}
+              </View>
             </View>
           )}
 
@@ -404,10 +451,29 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  codeInputContainer: {
+    position: 'relative',
+  },
   codeInput: {
     fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     fontSize: 18,
     letterSpacing: 8,
+    paddingRight: 60,
+  },
+  timerContainer: {
+    position: 'absolute',
+    right: 20,
+    top: 16,
+    backgroundColor: 'rgba(255, 182, 193, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  timerText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary || '#FF7EA6',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   verificationSuccess: {
     flexDirection: 'row',
