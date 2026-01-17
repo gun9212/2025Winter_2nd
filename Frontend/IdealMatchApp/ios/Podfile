@@ -63,6 +63,20 @@ target 'IdealMatchApp' do
     installer.pods_project.targets.each do |target|
       target.build_configurations.each do |config|
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+        
+        # Fix for react-native-screens New Architecture header issue
+        if target.name == 'RNScreens'
+          # Add compiler flags to handle missing New Architecture headers
+          config.build_settings['OTHER_CPLUSPLUSFLAGS'] ||= ['$(inherited)']
+          config.build_settings['OTHER_CPLUSPLUSFLAGS'] << '-Wno-error=non-modular-include-in-framework-module'
+          config.build_settings['OTHER_CPLUSPLUSFLAGS'] << '-Wno-non-modular-include-in-framework-module'
+          
+          # Add header search paths
+          config.build_settings['HEADER_SEARCH_PATHS'] ||= ['$(inherited)']
+          config.build_settings['HEADER_SEARCH_PATHS'] << '"${PODS_ROOT}/Headers/Public/React-Core"'
+          config.build_settings['HEADER_SEARCH_PATHS'] << '"${PODS_ROOT}/Headers/Public/React-Core/React"'
+          config.build_settings['HEADER_SEARCH_PATHS'] << '"${PODS_CONFIGURATION_BUILD_DIR}/React-Core/React_Core.framework/Headers"'
+        end
       end
     end
   end

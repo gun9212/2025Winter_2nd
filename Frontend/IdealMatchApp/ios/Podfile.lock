@@ -410,9 +410,9 @@ PODS:
   - RNReactNativeHapticFeedback (2.3.3):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
-  - RNScreens (3.20.0):
+  - RNScreens (3.27.0):
+    - RCT-Folly (= 2021.07.22.00)
     - React-Core
-    - React-RCTImage
   - RNSVG (15.15.1):
     - React-Core
   - RNVectorIcons (10.3.0):
@@ -579,7 +579,7 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
 SPEC CHECKSUMS:
-  boost: a21ef0bb4a53f7b15eaecb61c6bac6239223599c
+  boost: d9857fa6515e4f9985f29bf6f2e40cb03f54f859
   BVLinearGradient: cb006ba232a1f3e4f341bb62c42d1098c284da70
   DoubleConversion: 5189b271737e1565bdce30deb4a08d647e3f5f54
   FBLazyVector: 748c0ef74f2bf4b36cfcccf37916806940a64c32
@@ -625,12 +625,12 @@ SPEC CHECKSUMS:
   RNGestureHandler: 1141f6753c7cd749a20bbd46d2010968dffe3fc1
   RNNotifee: 5e3b271e8ea7456a36eec994085543c9adca9168
   RNReactNativeHapticFeedback: dda7ccd00a9b9e16b2c2e2282147ab5300344482
-  RNScreens: c6ae949c292bee8ed7f355ab2adcfc9a51629951
+  RNScreens: c04e015e917ce64d0983974d8efb8fa1dc1ddc56
   RNSVG: 843cb94bebafcbd6e86842ac76d2c5d4836ba0a0
   RNVectorIcons: 2a7ec3ea0e8af048e16f8d30bfaedc21d649c502
   SocketRocket: f32cd54efbe0f095c4d7594881e52619cfe80b17
   Yoga: b76f1acfda8212aa16b7e26bcce3983230c82603
 
-PODFILE CHECKSUM: 65a66c207b6a6fb89c4bdeb6b52d302cdff51f90
+PODFILE CHECKSUM: 9e478e0c66be5f7b0e6754880d2700a4b53d69f1
 
 COCOAPODS: 1.16.2
