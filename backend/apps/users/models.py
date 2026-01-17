@@ -17,8 +17,7 @@ class AuthUserManager(BaseUserManager):
         return user
     
     def create_superuser(self, username, password=None, **extra_fields):
-        extra_fields.setdefault('is_staff', True)
-        extra_fields.setdefault('is_superuser', True)
+        # is_staff, is_superuser 필드 없으므로 일반 사용자로 생성
         return self.create_user(username, password, **extra_fields)
 
 

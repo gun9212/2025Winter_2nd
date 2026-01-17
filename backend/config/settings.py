@@ -4,6 +4,7 @@ Django settings for config project.
 
 from pathlib import Path
 from decouple import config
+from datetime import timedelta
 import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -149,6 +150,14 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+}
+
+# JWT 토큰 설정
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),  # Access Token: 30분
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=3),     # Refresh Token: 3일
+    'ROTATE_REFRESH_TOKENS': True,  # Refresh Token 갱신 시 새로 발급
+    'BLACKLIST_AFTER_ROTATION': True,  # 갱신된 토큰은 블랙리스트에 추가
 }
 
 # CORS 설정

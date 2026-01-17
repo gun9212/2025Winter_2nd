@@ -1,13 +1,12 @@
 from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from .models import AuthUser, User, IdealTypeProfile, UserLocation
 
 
 @admin.register(AuthUser)
-class AuthUserAdmin(BaseUserAdmin):
+class AuthUserAdmin(admin.ModelAdmin):
     """인증 사용자 Admin"""
     list_display = ('username', 'phone_number', 'phone_verified', 'date_joined', 'last_login')
-    list_filter = ('phone_verified', 'is_staff', 'is_superuser', 'date_joined')
+    list_filter = ('phone_verified', 'date_joined')
     search_fields = ('username', 'phone_number')
     ordering = ('-date_joined',)
     
@@ -18,9 +17,6 @@ class AuthUserAdmin(BaseUserAdmin):
         ('전화번호', {
             'fields': ('phone_number', 'phone_verified', 'phone_verified_at')
         }),
-        ('권한', {
-            'fields': ('is_active', 'is_staff', 'is_superuser')
-        }),
         ('시간 정보', {
             'fields': ('date_joined', 'last_login')
         }),
@@ -29,7 +25,7 @@ class AuthUserAdmin(BaseUserAdmin):
     add_fieldsets = (
         ('인증 정보', {
             'classes': ('wide',),
-            'fields': ('username', 'phone_number', 'password1', 'password2'),
+            'fields': ('username', 'phone_number', 'password'),
         }),
     )
 
