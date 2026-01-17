@@ -19,10 +19,11 @@ export const AuthProvider = ({ children }) => {
     mockAuthServer.createTestAccounts();
   }, []);
 
-  // 프로필 자동 로드 (로그인 후 또는 사용자 정보가 있을 때)
+  // 프로필 및 이상형 프로필 자동 로드 (로그인 후 또는 사용자 정보가 있을 때)
   useEffect(() => {
     if (currentUser?.userId && isLoggedIn) {
       loadProfile();
+      loadIdealType();
     }
   }, [currentUser?.userId, isLoggedIn]);
 
@@ -36,6 +37,10 @@ export const AuthProvider = ({ children }) => {
       if (user && user.userId) {
         console.log('✅ 현재 사용자:', user.userId);
         setCurrentUser(user);
+        
+        // apiClient에 현재 사용자 username 설정 (Django user_id 조회를 위해)
+        apiClient.setCurrentUsername(user.userId);
+        console.log('👤 apiClient에 사용자 설정:', user.userId);
         
         // 해당 사용자의 프로필과 이상형 불러오기
         const profile = await StorageService.getUserProfile(user.userId);
@@ -77,6 +82,10 @@ export const AuthProvider = ({ children }) => {
       await StorageService.saveCurrentUser(result.user);
       setCurrentUser(result.user);
       setIsLoggedIn(true);
+      
+      // apiClient에 현재 사용자 username 설정 (Django user_id 조회를 위해)
+      apiClient.setCurrentUsername(userId);
+      console.log('👤 apiClient에 사용자 설정:', userId);
       
       // 자동 마이그레이션 시도
       const migrationResult = await dataMigration.autoMigrate(userId);
@@ -171,6 +180,11 @@ export const AuthProvider = ({ children }) => {
       setCurrentUser(null);
       setUserProfile(null);
       setIdealType(null);
+      
+      // apiClient에서 사용자 정보 제거
+      apiClient.setCurrentUsername(null);
+      apiClient.userIdCache = {}; // 캐시도 초기화
+      
       console.log('✅ 로그아웃 완료');
     } catch (error) {
       console.error('Logout error:', error);
@@ -261,6 +275,57 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
+   * 이상형 프로필 조회
+   */
+  const loadIdealType = async () => {
+    try {
+      if (!currentUser?.userId) {
+        return;
+      }
+      
+      console.log('📥 이상형 프로필 조회 중...');
+      const result = await apiClient.getIdealType();
+      
+      if (result.success && result.data) {
+        // 백엔드 필드명을 프론트엔드 형식으로 변환
+          const idealTypeData = {
+            minHeight: result.data.height_min,
+            maxHeight: result.data.height_max,
+            minAge: result.data.age_min,
+            maxAge: result.data.age_max,
+            preferredGender: result.data.preferred_gender || [],
+            preferredMBTI: result.data.preferred_mbti || [],
+            preferredPersonalities: result.data.preferred_personality || [],
+            preferredInterests: result.data.preferred_interests || [],
+            matchThreshold: result.data.match_threshold || 3,
+            // 백엔드 필드도 함께 저장 (필요시)
+            ...result.data,
+          };
+        
+        setIdealType(idealTypeData);
+        await StorageService.saveIdealType(idealTypeData, currentUser.userId);
+        console.log('✅ 이상형 프로필 로드 완료');
+      } else if (result.error && result.error.includes('이상형 프로필이 없습니다')) {
+        // 이상형 프로필이 없는 것은 정상적인 상황 (아직 생성하지 않았을 수 있음)
+        console.log('ℹ️  이상형 프로필이 없습니다. (아직 생성하지 않았을 수 있습니다)');
+        // 에러로 표시하지 않고 조용히 처리
+      } else if (!result.success) {
+        console.warn('⚠️ 이상형 프로필 조회 실패:', result.error);
+        // 기타 에러는 경고로만 표시
+      }
+    } catch (error) {
+      // 네트워크 에러나 기타 예외적인 에러만 로그
+      const errorMessage = error?.message || String(error);
+      if (!errorMessage.includes('이상형 프로필이 없습니다')) {
+        console.error('❌ 이상형 프로필 조회 중 예외 발생:', error);
+      } else {
+        console.log('ℹ️  이상형 프로필이 없습니다. (아직 생성하지 않았을 수 있습니다)');
+      }
+      // 에러가 나도 기존 로컬 데이터는 유지
+    }
+  };
+
+  /**
    * 이상형 업데이트
    */
   const updateIdealType = async (ideal) => {
@@ -269,13 +334,83 @@ export const AuthProvider = ({ children }) => {
         throw new Error('로그인된 사용자가 없습니다.');
       }
       
-      await StorageService.saveIdealType(ideal, currentUser.userId);
-      setIdealType(ideal);
+      // 프론트엔드 필드명을 백엔드 형식으로 변환
+      const apiIdealType = {
+        height_min: ideal.minHeight || ideal.height_min,
+        height_max: ideal.maxHeight || ideal.height_max,
+        age_min: ideal.minAge || ideal.age_min,
+        age_max: ideal.maxAge || ideal.age_max,
+        preferred_gender: ideal.preferredGender || ideal.preferred_gender || [],
+        preferred_personality: ideal.preferredPersonalities || ideal.preferred_personality || [],
+        preferred_interests: ideal.preferredInterests || ideal.preferred_interests || [],
+        match_threshold: ideal.matchThreshold || ideal.match_threshold || 3,
+        // preferred_mbti는 필수 필드이므로 항상 포함 (없으면 빈 배열)
+        preferred_mbti: ideal.preferredMBTI || ideal.preferred_mbti || [],
+      };
       
-      // 서버에 플래그 업데이트
-      await mockAuthServer.updateUserFlags(currentUser.userId, undefined, true);
+      console.log('📤 이상형 프로필 저장 중...', apiIdealType);
       
-      console.log('✅ 이상형 업데이트 완료');
+      // 실제 API 호출
+      const result = await apiClient.updateIdealType(apiIdealType);
+      
+      if (!result.success) {
+        // 에러 메시지 추출 (문자열 또는 객체)
+        let errorMsg = '이상형 프로필 업데이트에 실패했습니다.';
+        
+        console.error('❌ 이상형 프로필 저장 실패 - result:', result);
+        
+        if (result.error) {
+          if (typeof result.error === 'string') {
+            errorMsg = result.error;
+          } else if (result.error?.message) {
+            errorMsg = result.error.message;
+          } else if (typeof result.error === 'object') {
+            // 객체인 경우 안전하게 문자열화
+            try {
+              const errorStr = JSON.stringify(result.error, Object.getOwnPropertyNames(result.error));
+              if (errorStr !== '{}') {
+                errorMsg = errorStr;
+              }
+            } catch (jsonError) {
+              errorMsg = result.error.toString() || '알 수 없는 오류가 발생했습니다.';
+            }
+          } else {
+            errorMsg = String(result.error);
+          }
+        }
+        
+        console.error('❌ 추출된 에러 메시지:', errorMsg);
+        throw new Error(errorMsg);
+      }
+      
+          // 응답 데이터를 프론트엔드 형식으로 변환
+          const updatedIdealType = {
+            minHeight: result.data.height_min,
+            maxHeight: result.data.height_max,
+            minAge: result.data.age_min,
+            maxAge: result.data.age_max,
+            preferredGender: result.data.preferred_gender || [],
+            preferredMBTI: result.data.preferred_mbti || [],
+            preferredPersonalities: result.data.preferred_personality || [],
+            preferredInterests: result.data.preferred_interests || [],
+            matchThreshold: result.data.match_threshold || 3,
+            // 백엔드 필드도 함께 저장
+            ...result.data,
+          };
+      
+      // 로컬 저장소에도 저장
+      await StorageService.saveIdealType(updatedIdealType, currentUser.userId);
+      setIdealType(updatedIdealType);
+      
+      // 서버에 플래그 업데이트 (선택사항 - 기존 Mock API 호출)
+      try {
+        await mockAuthServer.updateUserFlags(currentUser.userId, undefined, true);
+      } catch (mockError) {
+        // Mock API 에러는 무시 (선택사항)
+        console.log('Mock API 호출 실패 (무시):', mockError);
+      }
+      
+      console.log('✅ 이상형 프로필 업데이트 완료');
     } catch (error) {
       console.error('Update ideal type error:', error);
       throw error;

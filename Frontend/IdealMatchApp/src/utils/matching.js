@@ -36,17 +36,57 @@ const toRad = (degrees) => {
 
 /**
  * 매칭 조건을 체크하고 점수를 계산
- * @param {Object} idealType - 이상형 조건
+ * @param {Object} idealType - 이상형 조건 (preferred_gender 포함)
  * @param {Object} targetUser - 매칭 대상 사용자
- * @param {string} myGender - 내 성별
+ * @param {string} myGender - 내 성별 (하위 호환성을 위해 유지)
  * @returns {number} 매칭 점수 (0-100), 조건 불충족 시 0
  */
 export const checkMatchCriteria = (idealType, targetUser, myGender) => {
   let score = 0;
 
-  // 1. 성별 체크 (이성만 매칭)
-  if (targetUser.gender === myGender) {
-    return 0; // 동성은 매칭 안 됨
+  // 1. 성별 체크 (이상형 프로필의 선호 성별 리스트에 포함되는지 확인)
+  const preferredGenders = idealType.preferred_gender || idealType.preferredGender || [];
+  
+  // 성별 값을 'M'/'F'로 정규화하는 헬퍼 함수
+  const normalizeGender = (gender) => {
+    if (!gender) return null;
+    const genderStr = String(gender).toUpperCase().trim();
+    // 다양한 형식 처리: 'M'/'F', 'male'/'female', '남'/'여', '남성'/'여성'
+    if (genderStr === 'M' || genderStr === 'MALE' || genderStr === '남' || genderStr === '남성') return 'M';
+    if (genderStr === 'F' || genderStr === 'FEMALE' || genderStr === '여' || genderStr === '여성') return 'F';
+    return genderStr; // 이미 'M'/'F'인 경우 그대로 반환
+  };
+  
+  // preferred_gender가 배열로 제공되는 경우
+  if (Array.isArray(preferredGenders) && preferredGenders.length > 0) {
+    // targetUser의 성별을 'M'/'F'로 정규화
+    const targetGender = normalizeGender(targetUser.gender);
+    
+    if (!targetGender) {
+      return 0; // 성별 정보가 없으면 매칭 안 됨
+    }
+    
+    // 선호 성별 리스트에 포함되어 있는지 확인 (모두 'M'/'F'로 정규화하여 비교)
+    const isGenderMatch = preferredGenders.some(gender => {
+      const normalizedPreferred = normalizeGender(gender);
+      return normalizedPreferred === targetGender;
+    });
+    
+    if (!isGenderMatch) {
+      return 0; // 선호 성별 리스트에 포함되지 않으면 매칭 안 됨
+    }
+  } else {
+    // 하위 호환성: preferred_gender가 없거나 빈 배열이면 기존 로직 사용 (반대 성별)
+    const targetGender = normalizeGender(targetUser.gender);
+    const myGenderNormalized = normalizeGender(myGender);
+    
+    if (!targetGender || !myGenderNormalized) {
+      return 0; // 성별 정보가 없으면 매칭 안 됨
+    }
+    
+    if (targetGender === myGenderNormalized) {
+      return 0; // 동성은 매칭 안 됨
+    }
   }
 
   // 2. 나이 범위 체크

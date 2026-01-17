@@ -139,10 +139,17 @@ class IdealTypeProfile(models.Model):
     age_min = models.IntegerField(verbose_name='최소 나이')
     age_max = models.IntegerField(verbose_name='최대 나이')
     
+    # 성별 조건 (다중 선택 가능, 최소 1개 이상)
+    preferred_gender = models.JSONField(
+        default=list,
+        verbose_name='성별 리스트',
+        help_text='성별을 선택하세요 (예: ["M", "F"] 또는 ["M"] 또는 ["F"])'
+    )
+    
     # 성격 및 관심사 조건
-    preferred_mbti = models.JSONField(default=list, verbose_name='선호 MBTI 리스트')
-    preferred_personality = models.JSONField(default=list, verbose_name='선호 성격 유형 리스트')
-    preferred_interests = models.JSONField(default=list, verbose_name='선호 관심사 리스트')
+    preferred_mbti = models.JSONField(default=list, blank=True, verbose_name='MBTI 리스트')
+    preferred_personality = models.JSONField(default=list, verbose_name='성격 유형 리스트')
+    preferred_interests = models.JSONField(default=list, verbose_name='관심사 리스트')
     
     # 매칭 임계값 (기본값: 3개 이상 일치)
     match_threshold = models.IntegerField(default=3, verbose_name='매칭 임계값')
@@ -158,17 +165,28 @@ class IdealTypeProfile(models.Model):
     def clean(self):
         """Validation: 모든 조건은 최소 1개 이상"""
         super().clean()
+        if not self.preferred_gender or len(self.preferred_gender) == 0:
+            raise ValidationError({
+                'preferred_gender': '성별을 최소 1개 이상 선택해주세요.'
+            })
+        # preferred_gender는 'M' 또는 'F'만 허용
+        valid_genders = {'M', 'F'}
+        for gender in self.preferred_gender:
+            if gender not in valid_genders:
+                raise ValidationError({
+                    'preferred_gender': f'유효하지 않은 성별입니다: {gender}. M 또는 F만 허용됩니다.'
+                })
         if not self.preferred_mbti or len(self.preferred_mbti) == 0:
             raise ValidationError({
-                'preferred_mbti': '선호 MBTI를 최소 1개 이상 선택해주세요.'
+                'preferred_mbti': 'MBTI를 최소 1개 이상 선택해주세요.'
             })
         if not self.preferred_personality or len(self.preferred_personality) == 0:
             raise ValidationError({
-                'preferred_personality': '선호 성격 유형을 최소 1개 이상 선택해주세요.'
+                'preferred_personality': '성격 유형을 최소 1개 이상 선택해주세요.'
             })
         if not self.preferred_interests or len(self.preferred_interests) == 0:
             raise ValidationError({
-                'preferred_interests': '선호 관심사를 최소 1개 이상 선택해주세요.'
+                'preferred_interests': '관심사를 최소 1개 이상 선택해주세요.'
             })
     
     def save(self, *args, **kwargs):

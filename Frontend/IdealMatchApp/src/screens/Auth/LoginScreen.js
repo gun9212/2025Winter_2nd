@@ -73,12 +73,12 @@ const LoginScreen = ({ navigation, onLogin }) => {
             <Text style={styles.label}>ID OR EMAIL</Text>
             <TextInput
               style={styles.input}
-              value={userId}
-              onChangeText={setUserId}
+            value={userId}
+            onChangeText={setUserId}
               placeholder="hello@example.com"
               placeholderTextColor="#CBD5E1"
-              autoCapitalize="none"
-              autoCorrect={false}
+            autoCapitalize="none"
+            autoCorrect={false}
               keyboardType="email-address"
             />
           </View>
@@ -89,13 +89,13 @@ const LoginScreen = ({ navigation, onLogin }) => {
             <View style={styles.passwordContainer}>
               <TextInput
                 style={styles.input}
-                value={password}
-                onChangeText={setPassword}
+            value={password}
+            onChangeText={setPassword}
                 placeholder="••••••••"
                 placeholderTextColor="#CBD5E1"
                 secureTextEntry={!showPassword}
-                autoCapitalize="none"
-              />
+            autoCapitalize="none"
+          />
               <TouchableOpacity
                 style={styles.eyeButton}
                 onPress={() => setShowPassword(!showPassword)}
@@ -103,7 +103,7 @@ const LoginScreen = ({ navigation, onLogin }) => {
                 <Text style={styles.eyeIcon}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
               </TouchableOpacity>
             </View>
-          </View>
+        </View>
 
           {/* Forgot password */}
           <TouchableOpacity

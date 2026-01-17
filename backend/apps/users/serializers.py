@@ -45,43 +45,61 @@ class IdealTypeProfileSerializer(serializers.ModelSerializer):
     """이상형 프로필 Serializer"""
     class Meta:
         model = IdealTypeProfile
-        fields = ['height_min', 'height_max', 'age_min', 'age_max', 
+        fields = ['height_min', 'height_max', 'age_min', 'age_max',
+                 'preferred_gender',
                  'preferred_mbti', 'preferred_personality', 'preferred_interests', 
                  'match_threshold']
         read_only_fields = ['created_at', 'updated_at']
     
     def validate(self, data):
-        """전체 데이터 검증"""
+        """전체 필드 검증"""
         # 키 범위 검증
-        if data.get('height_min') and data.get('height_max'):
+        if data.get('height_min') is not None and data.get('height_max') is not None:
             if data['height_min'] > data['height_max']:
                 raise serializers.ValidationError({
                     'height': '최소 키는 최대 키보다 작거나 같아야 합니다.'
                 })
         
         # 나이 범위 검증
-        if data.get('age_min') and data.get('age_max'):
+        if data.get('age_min') is not None and data.get('age_max') is not None:
             if data['age_min'] > data['age_max']:
                 raise serializers.ValidationError({
                     'age': '최소 나이는 최대 나이보다 작거나 같아야 합니다.'
                 })
         
+        # 선호 성별 검증
+        if data.get('preferred_gender') is not None:
+            if len(data['preferred_gender']) == 0:
+                raise serializers.ValidationError({
+                    'preferred_gender': '성별을 최소 1개 이상 선택해주세요.'
+                })
+            # 'M' 또는 'F'만 허용
+            valid_genders = {'M', 'F'}
+            for gender in data['preferred_gender']:
+                if gender not in valid_genders:
+                    raise serializers.ValidationError({
+                        'preferred_gender': f'유효하지 않은 성별입니다: {gender}. M 또는 F만 허용됩니다.'
+                    })
+        
         # 선호 MBTI 검증
-        if data.get('preferred_mbti') and len(data['preferred_mbti']) == 0:
-            raise serializers.ValidationError({
-                'preferred_mbti': '선호 MBTI를 최소 1개 이상 선택해주세요.'
-            })
+        if data.get('preferred_mbti') is not None:
+            if len(data['preferred_mbti']) == 0:
+                raise serializers.ValidationError({
+                    'preferred_mbti': 'MBTI를 최소 1개 이상 선택해주세요.'
+                })
         
         # 선호 성격 검증
-        if data.get('preferred_personality') and len(data['preferred_personality']) == 0:
-            raise serializers.ValidationError({
-                'preferred_personality': '선호 성격 유형을 최소 1개 이상 선택해주세요.'
-            })
+        if data.get('preferred_personality') is not None:
+            if len(data['preferred_personality']) == 0:
+                raise serializers.ValidationError({
+                    'preferred_personality': '성격 유형을 최소 1개 이상 선택해주세요.'
+                })
         
         # 선호 관심사 검증
-        if data.get('preferred_interests') and len(data['preferred_interests']) == 0:
-            raise serializers.ValidationError({
-                'preferred_interests': '선호 관심사를 최소 1개 이상 선택해주세요.'
-            })
+        if data.get('preferred_interests') is not None:
+            if len(data['preferred_interests']) == 0:
+                raise serializers.ValidationError({
+                    'preferred_interests': '관심사를 최소 1개 이상 선택해주세요.'
+                })
         
         return data

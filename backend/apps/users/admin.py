@@ -64,7 +64,7 @@ class UserAdmin(admin.ModelAdmin):
 @admin.register(IdealTypeProfile)
 class IdealTypeProfileAdmin(admin.ModelAdmin):
     """이상형 프로필 Admin"""
-    list_display = ('user', 'height_min', 'height_max', 'age_min', 'age_max', 'match_threshold', 'created_at')
+    list_display = ('user', 'preferred_gender', 'height_min', 'height_max', 'age_min', 'age_max', 'match_threshold', 'created_at')
     list_filter = ('match_threshold', 'created_at')
     search_fields = ('user__user__username', 'user__user__phone_number')
     raw_id_fields = ('user',)
@@ -73,6 +73,10 @@ class IdealTypeProfileAdmin(admin.ModelAdmin):
     fieldsets = (
         ('사용자', {
             'fields': ('user',)
+        }),
+        ('성별 조건', {
+            'fields': ('preferred_gender',),
+            'description': '선호하는 성별을 선택하세요. 예: ["M"], ["F"], ["M", "F"]'
         }),
         ('외형 조건', {
             'fields': ('height_min', 'height_max', 'age_min', 'age_max')
@@ -87,6 +91,15 @@ class IdealTypeProfileAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at')
         }),
     )
+    
+    def preferred_gender(self, obj):
+        """선호 성별을 읽기 쉬운 형식으로 표시"""
+        if not obj.preferred_gender:
+            return '-'
+        gender_map = {'M': '남성', 'F': '여성'}
+        labels = [gender_map.get(g, g) for g in obj.preferred_gender]
+        return ', '.join(labels) if labels else '-'
+    preferred_gender.short_description = '선호 성별'
 
 
 @admin.register(UserLocation)

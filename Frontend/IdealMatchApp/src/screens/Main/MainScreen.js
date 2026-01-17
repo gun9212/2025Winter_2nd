@@ -31,6 +31,12 @@ const MainScreen = ({ navigation }) => {
   const [showHeartbeat, setShowHeartbeat] = useState(false);
   const matchingIntervalRef = useRef(null);
   const hasNotifiedRef = useRef(false);
+  const lastMatchIdRef = useRef(null); // 마지막 매칭 ID 저장
+  const notificationCooldownRef = useRef(false); // 알림 쿨다운 플래그
+  const isSearchingRef = useRef(false); // 검색 중 플래그 (ref로 동기 체크)
+  const isSendingLocationRef = useRef(false); // 위치 전송 중 플래그
+  const lastLocationRef = useRef(null); // 마지막 전송한 위치 저장
+  const locationUpdateCooldownRef = useRef(false); // 위치 업데이트 쿨다운 플래그
   const appState = useRef(AppState.currentState);
   const backgroundIntervalRef = useRef(null);
 
@@ -109,9 +115,14 @@ const MainScreen = ({ navigation }) => {
       const id = locationService.watchLocation(async (newLocation) => {
         console.log('📍 위치 업데이트됨:', newLocation);
         setLocation(newLocation);
-        // 위치가 변경될 때마다 서버에 전송
+        // 위치가 변경될 때만 서버에 전송 (중복 방지 로직 내장)
         await sendLocationToServer(newLocation);
-        searchMatches(newLocation);
+        // 위치 변경 시에는 알림 쿨다운이 없을 때만 검색
+        if (!notificationCooldownRef.current) {
+          await searchMatches(newLocation);
+        } else {
+          console.log('⏸️ 위치 변경 감지되었지만 알림 쿨다운 중이므로 검색 건너뜀.');
+        }
       });
       setWatchId(id);
       console.log('✅ 위치 감지 시작됨 (watchId:', id, ')');
@@ -122,10 +133,12 @@ const MainScreen = ({ navigation }) => {
       matchingIntervalRef.current = setInterval(async () => {
         console.log('⏰ 주기적 매칭 검색...');
         try {
-          const latestLocation = await locationService.getCurrentLocation();
-          // 주기적 검색 시에도 서버에 위치 전송
-          await sendLocationToServer(latestLocation);
-          await searchMatches(latestLocation);
+          // 현재 위치 상태만 사용 (위치 변경 감지에서 이미 업데이트됨)
+          // 주기적 검색 시에는 위치 전송하지 않음 (위치 변경 감지에서만 전송)
+          // 알림 쿨다운이 없을 때만 검색
+          if (!notificationCooldownRef.current && location) {
+            await searchMatches(location);
+          }
         } catch (error) {
           console.error('주기적 매칭 검색 오류:', error);
         }
@@ -141,34 +154,66 @@ const MainScreen = ({ navigation }) => {
   };
 
   const searchMatches = async (searchLocation) => {
+    // 이미 검색 중이면 중복 실행 방지 (ref로 동기 체크)
+    if (isSearchingRef.current) {
+      console.log('⏸️ 매칭 검색이 이미 진행 중입니다. 중복 실행 방지.');
+      return;
+    }
+
+    // 알림 쿨다운 중이면 검색하지 않음
+    if (notificationCooldownRef.current) {
+      console.log('⏸️ 알림 쿨다운 중입니다. 검색 건너뜀.');
+      return;
+    }
+
     try {
+      isSearchingRef.current = true;
       setIsSearching(true);
       const result = await mockApiClient.findMatches(searchLocation);
       setMatchResult(result);
 
-      if (result.matched && result.matches.length > 0 && !hasNotifiedRef.current) {
+      if (result.matched && result.matches.length > 0) {
         const bestMatch = result.matches[0];
-        console.log('🎉 매칭 성공! 주변에서 이상형을 발견했습니다!');
+        // 매칭 ID 생성 (사용자 ID + 타임스탬프 기반)
+        const matchId = `${bestMatch.user?.id || 'unknown'}-${Date.now()}`;
         
-        hasNotifiedRef.current = true;
-        setShowHeartbeat(true);
-        hapticService.heartbeat();
-        notificationService.showMatchNotification(bestMatch);
-        
-        setTimeout(() => {
-          setShowHeartbeat(false);
-        }, 5000);
-        
-        setTimeout(() => {
-          console.log('🔄 매칭 상태 리셋 - 다시 매칭을 시도합니다...');
-          mockApiClient.resetMatchCounter();
-          setMatchResult(null);
-          hasNotifiedRef.current = false;
-        }, 10000);
+        // 같은 매칭에 대한 중복 알림 방지
+        if (hasNotifiedRef.current && lastMatchIdRef.current === matchId) {
+          console.log('⏸️ 이미 알림을 표시한 매칭입니다. 중복 알림 방지.');
+          return;
+        }
+
+        // 새로운 매칭이거나 알림을 표시하지 않은 경우
+        if (!hasNotifiedRef.current || lastMatchIdRef.current !== matchId) {
+          console.log('🎉 매칭 성공! 주변에서 이상형을 발견했습니다!');
+          
+          hasNotifiedRef.current = true;
+          lastMatchIdRef.current = matchId;
+          notificationCooldownRef.current = true; // 쿨다운 시작
+          
+          setShowHeartbeat(true);
+          hapticService.heartbeat();
+          notificationService.showMatchNotification(bestMatch);
+          
+          setTimeout(() => {
+            setShowHeartbeat(false);
+          }, 5000);
+          
+          // 10초 후 상태 리셋
+          setTimeout(() => {
+            console.log('🔄 매칭 상태 리셋 - 다시 매칭을 시도합니다...');
+            mockApiClient.resetMatchCounter();
+            setMatchResult(null);
+            hasNotifiedRef.current = false;
+            lastMatchIdRef.current = null;
+            notificationCooldownRef.current = false; // 쿨다운 해제
+          }, 10000);
+        }
       }
     } catch (error) {
       console.error('❌ 매칭 검색 오류:', error);
     } finally {
+      isSearchingRef.current = false;
       setIsSearching(false);
     }
   };
@@ -185,17 +230,18 @@ const MainScreen = ({ navigation }) => {
       }
       
       if (location) {
-        // 포어그라운드 전환 시에도 위치를 서버에 전송
-        await sendLocationToServer(location);
-        await searchMatches(location);
+        // 포어그라운드 전환 시에는 위치 전송하지 않음 (위치 변경 감지에서만 전송)
+        // 알림 쿨다운이 없을 때만 검색
+        if (!notificationCooldownRef.current) {
+          await searchMatches(location);
+        } else {
+          console.log('⏸️ 포어그라운드 전환 시 알림 쿨다운 중이므로 검색 건너뜀.');
+        }
       }
     } else if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
       console.log('🔒 백그라운드 전환 - 백그라운드 매칭 시작');
       
-      if (location) {
-        await sendLocationToServer(location);
-      }
-      
+      // 백그라운드 전환 시에는 위치 전송하지 않음 (위치 변경 감지에서만 전송)
       startBackgroundMatching();
     }
 
@@ -203,7 +249,35 @@ const MainScreen = ({ navigation }) => {
   };
 
   const sendLocationToServer = async (currentLocation) => {
+    // 이미 전송 중이면 중복 실행 방지
+    if (isSendingLocationRef.current) {
+      console.log('⏸️ 위치 전송이 이미 진행 중입니다. 중복 실행 방지.');
+      return { success: true, skipped: true };
+    }
+
+    // 위치 업데이트 쿨다운 중이면 전송하지 않음 (5초 간격)
+    if (locationUpdateCooldownRef.current) {
+      console.log('⏸️ 위치 업데이트 쿨다운 중입니다. 전송 건너뜀.');
+      return { success: true, skipped: true };
+    }
+
+    // 같은 위치를 방금 전송했다면 건너뜀
+    if (lastLocationRef.current) {
+      const latDiff = Math.abs(lastLocationRef.current.latitude - currentLocation.latitude);
+      const lonDiff = Math.abs(lastLocationRef.current.longitude - currentLocation.longitude);
+      const timeDiff = Date.now() - lastLocationRef.current.timestamp;
+      
+      // 위치가 거의 같고(0.0001도 이내) 5초 이내에 전송했다면 건너뜀
+      if (latDiff < 0.0001 && lonDiff < 0.0001 && timeDiff < 5000) {
+        console.log('⏸️ 같은 위치를 최근에 전송했습니다. 건너뜀.');
+        return { success: true, skipped: true };
+      }
+    }
+
     try {
+      isSendingLocationRef.current = true;
+      locationUpdateCooldownRef.current = true;
+
       console.log('🌐 서버로 위치 전송 중...', {
         latitude: currentLocation.latitude.toFixed(6),
         longitude: currentLocation.longitude.toFixed(6),
@@ -216,17 +290,31 @@ const MainScreen = ({ navigation }) => {
 
       if (result.success) {
         console.log('✅ 위치 업데이트 성공:', result.data);
+        // 마지막 전송한 위치 저장
+        lastLocationRef.current = {
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+          timestamp: Date.now(),
+        };
       } else {
         console.error('❌ 위치 업데이트 실패:', result.error);
       }
 
+      // 5초 후 쿨다운 해제
+      setTimeout(() => {
+        locationUpdateCooldownRef.current = false;
+      }, 5000);
+
       return result;
     } catch (error) {
       console.error('❌ 서버 전송 오류:', error);
+      locationUpdateCooldownRef.current = false;
       return { 
         success: false, 
         error: error.message || '알 수 없는 오류가 발생했습니다.' 
       };
+    } finally {
+      isSendingLocationRef.current = false;
     }
   };
 
@@ -238,22 +326,43 @@ const MainScreen = ({ navigation }) => {
       try {
         console.log('⏰ 백그라운드 매칭 체크...');
         
-        const currentLocation = await locationService.getCurrentLocation();
-        await sendLocationToServer(currentLocation);
+        // 현재 위치 상태만 사용 (위치 변경 감지에서 이미 업데이트됨)
+        // 백그라운드 매칭 시에는 위치 전송하지 않음 (위치 변경 감지에서만 전송)
         
-        const result = await mockApiClient.findMatches(currentLocation);
+        if (!location) {
+          console.log('⏸️ 위치 정보가 없어 매칭 검색을 건너뜁니다.');
+          return;
+        }
         
-        if (result.matched && result.matches.length > 0 && !hasNotifiedRef.current) {
-          console.log('🎉 백그라운드 매칭 성공!');
+        const result = await mockApiClient.findMatches(location);
+        
+        if (result.matched && result.matches.length > 0) {
+          const bestMatch = result.matches[0];
+          const matchId = `${bestMatch.user?.id || 'unknown'}-${Date.now()}`;
           
-          hasNotifiedRef.current = true;
-          await notificationService.showMatchNotification();
-          hapticService.heartbeat();
-          
-          setTimeout(() => {
-            hasNotifiedRef.current = false;
-            mockApiClient.resetMatchCounter();
-          }, 10000);
+          // 중복 알림 방지
+          if (hasNotifiedRef.current && lastMatchIdRef.current === matchId) {
+            console.log('⏸️ 백그라운드: 이미 알림을 표시한 매칭입니다.');
+            return;
+          }
+
+          if (!hasNotifiedRef.current || lastMatchIdRef.current !== matchId) {
+            console.log('🎉 백그라운드 매칭 성공!');
+            
+            hasNotifiedRef.current = true;
+            lastMatchIdRef.current = matchId;
+            notificationCooldownRef.current = true;
+            
+            await notificationService.showMatchNotification(bestMatch);
+            hapticService.heartbeat();
+            
+            setTimeout(() => {
+              hasNotifiedRef.current = false;
+              lastMatchIdRef.current = null;
+              notificationCooldownRef.current = false;
+              mockApiClient.resetMatchCounter();
+            }, 10000);
+          }
         }
       } catch (error) {
         console.error('❌ 백그라운드 매칭 오류:', error);
