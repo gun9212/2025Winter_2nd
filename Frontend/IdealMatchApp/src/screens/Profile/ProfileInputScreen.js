@@ -77,9 +77,9 @@ const ProfileInputScreen = ({ navigation }) => {
     try {
       const profile = {
         age: parseInt(age),
-        gender,
+        gender, // 'male' or 'female'
         height: parseInt(height),
-        personalities,
+        personalities, // 프론트엔드에서는 personalities 사용
         mbti,
         interests,
       };
@@ -92,8 +92,9 @@ const ProfileInputScreen = ({ navigation }) => {
         },
       ]);
     } catch (error) {
-      Alert.alert('오류', '프로필 저장에 실패했습니다');
-      console.error(error);
+      const errorMessage = error.message || '프로필 저장에 실패했습니다';
+      Alert.alert('오류', errorMessage);
+      console.error('프로필 저장 오류:', error);
     } finally {
       setLoading(false);
     }

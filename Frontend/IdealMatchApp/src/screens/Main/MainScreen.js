@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { AuthContext } from '../../context';
 import { locationService } from '../../services/location';
-import { mockApiClient, apiClient } from '../../services/api';
+import { mockApiClient } from '../../services/api';
+import { apiClient } from '../../services/api/apiClient';
 import { hapticService } from '../../services/haptic';
 import { notificationService } from '../../services/notification';
 import { HeartbeatAnimation, GlowingHeart } from '../../components/animations';
@@ -100,12 +101,16 @@ const MainScreen = ({ navigation }) => {
       mockApiClient.initialize(currentLocation);
       mockApiClient.setUserProfile(userProfile, idealType);
 
+      // 초기 위치를 서버에 전송
+      await sendLocationToServer(currentLocation);
       await searchMatches(currentLocation);
 
       console.log('🎯 위치 변경 감지 시작...');
-      const id = locationService.watchLocation((newLocation) => {
+      const id = locationService.watchLocation(async (newLocation) => {
         console.log('📍 위치 업데이트됨:', newLocation);
         setLocation(newLocation);
+        // 위치가 변경될 때마다 서버에 전송
+        await sendLocationToServer(newLocation);
         searchMatches(newLocation);
       });
       setWatchId(id);
@@ -118,6 +123,8 @@ const MainScreen = ({ navigation }) => {
         console.log('⏰ 주기적 매칭 검색...');
         try {
           const latestLocation = await locationService.getCurrentLocation();
+          // 주기적 검색 시에도 서버에 위치 전송
+          await sendLocationToServer(latestLocation);
           await searchMatches(latestLocation);
         } catch (error) {
           console.error('주기적 매칭 검색 오류:', error);
@@ -178,6 +185,8 @@ const MainScreen = ({ navigation }) => {
       }
       
       if (location) {
+        // 포어그라운드 전환 시에도 위치를 서버에 전송
+        await sendLocationToServer(location);
         await searchMatches(location);
       }
     } else if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {

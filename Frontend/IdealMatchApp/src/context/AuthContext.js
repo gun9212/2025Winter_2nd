@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect } from 'react';
 import { StorageService } from '../services/storage';
 import { mockAuthServer } from '../services/mock';
 import { dataMigration } from '../services/migration';
+import { apiClient } from '../services/api/apiClient';
 
 export const AuthContext = createContext();
 
@@ -17,6 +18,13 @@ export const AuthProvider = ({ children }) => {
     // 테스트 계정 생성
     mockAuthServer.createTestAccounts();
   }, []);
+
+  // 프로필 자동 로드 (로그인 후 또는 사용자 정보가 있을 때)
+  useEffect(() => {
+    if (currentUser?.userId && isLoggedIn) {
+      loadProfile();
+    }
+  }, [currentUser?.userId, isLoggedIn]);
 
   const loadAuthStatus = async () => {
     try {
@@ -170,6 +178,35 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
+   * 프로필 조회
+   */
+  const loadProfile = async () => {
+    try {
+      if (!currentUser?.userId) {
+        return;
+      }
+      
+      console.log('📥 프로필 조회 중...');
+      const result = await apiClient.getProfile();
+      
+      if (result.success && result.data) {
+        // 백엔드 필드명을 프론트엔드 형식으로 변환
+        const profile = {
+          ...result.data,
+          personalities: result.data.personality || [], // personality -> personalities
+        };
+        
+        setUserProfile(profile);
+        await StorageService.saveUserProfile(profile, currentUser.userId);
+        console.log('✅ 프로필 로드 완료');
+      }
+    } catch (error) {
+      console.error('Load profile error:', error);
+      // 에러가 나도 기존 로컬 데이터는 유지
+    }
+  };
+
+  /**
    * 프로필 업데이트
    */
   const updateProfile = async (profile) => {
@@ -178,11 +215,43 @@ export const AuthProvider = ({ children }) => {
         throw new Error('로그인된 사용자가 없습니다.');
       }
       
-      await StorageService.saveUserProfile(profile, currentUser.userId);
-      setUserProfile(profile);
+      // 프론트엔드 필드명을 백엔드 형식으로 변환
+      const apiProfile = {
+        age: profile.age,
+        gender: profile.gender === 'male' ? 'M' : profile.gender === 'female' ? 'F' : profile.gender,
+        height: profile.height,
+        mbti: profile.mbti,
+        personality: profile.personalities || profile.personality || [], // personalities -> personality
+        interests: profile.interests || [],
+      };
       
-      // 서버에 플래그 업데이트
-      await mockAuthServer.updateUserFlags(currentUser.userId, true, undefined);
+      console.log('📤 프로필 저장 중...', apiProfile);
+      
+      // 실제 API 호출
+      const result = await apiClient.updateProfile(apiProfile);
+      
+      if (!result.success) {
+        throw new Error(result.error || '프로필 업데이트에 실패했습니다.');
+      }
+      
+      // 응답 데이터를 프론트엔드 형식으로 변환
+      const updatedProfile = {
+        ...result.data,
+        personalities: result.data.personality || [], // personality -> personalities
+        gender: result.data.gender === 'M' ? 'male' : result.data.gender === 'F' ? 'female' : result.data.gender,
+      };
+      
+      // 로컬 저장소에도 저장
+      await StorageService.saveUserProfile(updatedProfile, currentUser.userId);
+      setUserProfile(updatedProfile);
+      
+      // 서버에 플래그 업데이트 (선택사항 - 기존 Mock API 호출)
+      try {
+        await mockAuthServer.updateUserFlags(currentUser.userId, true, undefined);
+      } catch (mockError) {
+        // Mock API 에러는 무시 (선택사항)
+        console.log('Mock API 호출 실패 (무시):', mockError);
+      }
       
       console.log('✅ 프로필 업데이트 완료');
     } catch (error) {

@@ -17,7 +17,16 @@ class AuthUserManager(BaseUserManager):
         return user
     
     def create_superuser(self, username, password=None, **extra_fields):
-        # is_staff, is_superuser 필드 없으므로 일반 사용자로 생성
+        """슈퍼유저 생성"""
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('is_active', True)
+        
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError('Superuser must have is_staff=True.')
+        if extra_fields.get('is_superuser') is not True:
+            raise ValueError('Superuser must have is_superuser=True.')
+        
         return self.create_user(username, password, **extra_fields)
 
 
@@ -31,6 +40,11 @@ class AuthUser(AbstractBaseUser):
     date_joined = models.DateTimeField(default=timezone.now, verbose_name='가입일')
     last_login = models.DateTimeField(null=True, blank=True, verbose_name='마지막 로그인')
     
+    # Django Admin 접근 권한 필드
+    is_staff = models.BooleanField(default=False, verbose_name='스태프 권한')
+    is_superuser = models.BooleanField(default=False, verbose_name='슈퍼유저 권한')
+    is_active = models.BooleanField(default=True, verbose_name='활성화')
+    
     objects = AuthUserManager()
     
     USERNAME_FIELD = 'username'
@@ -43,6 +57,14 @@ class AuthUser(AbstractBaseUser):
     
     def __str__(self):
         return f"{self.username} ({self.phone_number})"
+    
+    def has_perm(self, perm, obj=None):
+        """권한 확인"""
+        return self.is_superuser
+    
+    def has_module_perms(self, app_label):
+        """모듈 권한 확인"""
+        return self.is_superuser
 
 
 class User(models.Model):

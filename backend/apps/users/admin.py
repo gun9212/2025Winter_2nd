@@ -37,6 +37,7 @@ class UserAdmin(admin.ModelAdmin):
     list_filter = ('gender', 'mbti', 'matching_consent', 'service_active', 'created_at')
     search_fields = ('user__username', 'user__phone_number')
     raw_id_fields = ('user',)
+    readonly_fields = ('created_at', 'updated_at', 'consent_updated_at', 'last_count_updated_at')
     
     fieldsets = (
         ('사용자', {
@@ -67,6 +68,7 @@ class IdealTypeProfileAdmin(admin.ModelAdmin):
     list_filter = ('match_threshold', 'created_at')
     search_fields = ('user__user__username', 'user__user__phone_number')
     raw_id_fields = ('user',)
+    readonly_fields = ('created_at', 'updated_at')
     
     fieldsets = (
         ('사용자', {
@@ -94,3 +96,4 @@ class UserLocationAdmin(admin.ModelAdmin):
     list_filter = ('updated_at',)
     search_fields = ('user__user__username', 'user__user__phone_number')
     raw_id_fields = ('user',)
+    readonly_fields = ('updated_at',)
