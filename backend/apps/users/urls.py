@@ -4,6 +4,12 @@ from . import views
 app_name = 'users'
 
 urlpatterns = [
+    # 인증 관련 API
+    path('auth/register/', views.register, name='register'),
+    path('auth/login/', views.login, name='login'),
+    path('auth/send-verification-code/', views.send_verification_code, name='send_verification_code'),
+    path('auth/verify-email/', views.verify_email, name='verify_email'),
+    
     # 위치 관련 API
     path('location/update/', views.update_location, name='update_location'),
     

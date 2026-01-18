@@ -3,7 +3,6 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 
-
 class AuthUserManager(BaseUserManager):
     """인증 사용자 매니저"""
     
@@ -34,9 +33,9 @@ class AuthUser(AbstractBaseUser):
     """인증 사용자 모델 (auth_users 테이블)"""
     username = models.CharField(max_length=100, unique=True, verbose_name='로그인 ID')
     password = models.CharField(max_length=128, verbose_name='비밀번호')
-    phone_number = models.CharField(max_length=20, unique=True, verbose_name='전화번호')
-    phone_verified = models.BooleanField(default=False, verbose_name='전화번호 인증 여부')
-    phone_verified_at = models.DateTimeField(null=True, blank=True, verbose_name='전화번호 인증 시간')
+    email = models.EmailField(unique=True, verbose_name='이메일')
+    email_verified = models.BooleanField(default=False, verbose_name='이메일 인증 여부')
+    email_verified_at = models.DateTimeField(null=True, blank=True, verbose_name='이메일 인증 시간')
     date_joined = models.DateTimeField(default=timezone.now, verbose_name='가입일')
     last_login = models.DateTimeField(null=True, blank=True, verbose_name='마지막 로그인')
     
@@ -56,7 +55,7 @@ class AuthUser(AbstractBaseUser):
         verbose_name_plural = '인증 사용자들'
     
     def __str__(self):
-        return f"{self.username} ({self.phone_number})"
+        return f"{self.username} ({self.email})"
     
     def has_perm(self, perm, obj=None):
         """권한 확인"""

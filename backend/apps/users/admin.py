@@ -5,17 +5,17 @@ from .models import AuthUser, User, IdealTypeProfile, UserLocation
 @admin.register(AuthUser)
 class AuthUserAdmin(admin.ModelAdmin):
     """인증 사용자 Admin"""
-    list_display = ('username', 'phone_number', 'phone_verified', 'date_joined', 'last_login')
-    list_filter = ('phone_verified', 'date_joined')
-    search_fields = ('username', 'phone_number')
+    list_display = ('username', 'email', 'email_verified', 'date_joined', 'last_login')
+    list_filter = ('email_verified', 'date_joined')
+    search_fields = ('username', 'email')
     ordering = ('-date_joined',)
     
     fieldsets = (
         ('인증 정보', {
             'fields': ('username', 'password')
         }),
-        ('전화번호', {
-            'fields': ('phone_number', 'phone_verified', 'phone_verified_at')
+        ('이메일', {
+            'fields': ('email', 'email_verified', 'email_verified_at')
         }),
         ('시간 정보', {
             'fields': ('date_joined', 'last_login')
@@ -25,7 +25,7 @@ class AuthUserAdmin(admin.ModelAdmin):
     add_fieldsets = (
         ('인증 정보', {
             'classes': ('wide',),
-            'fields': ('username', 'phone_number', 'password'),
+            'fields': ('username', 'email', 'password'),
         }),
     )
 
@@ -35,7 +35,7 @@ class UserAdmin(admin.ModelAdmin):
     """사용자 프로필 Admin"""
     list_display = ('user', 'age', 'gender', 'height', 'mbti', 'matching_consent', 'service_active', 'created_at')
     list_filter = ('gender', 'mbti', 'matching_consent', 'service_active', 'created_at')
-    search_fields = ('user__username', 'user__phone_number')
+    search_fields = ('user__username', 'user__email')
     raw_id_fields = ('user',)
     readonly_fields = ('created_at', 'updated_at', 'consent_updated_at', 'last_count_updated_at')
     
@@ -66,7 +66,7 @@ class IdealTypeProfileAdmin(admin.ModelAdmin):
     """이상형 프로필 Admin"""
     list_display = ('user', 'height_min', 'height_max', 'age_min', 'age_max', 'match_threshold', 'created_at')
     list_filter = ('match_threshold', 'created_at')
-    search_fields = ('user__user__username', 'user__user__phone_number')
+    search_fields = ('user__user__username', 'user__user__email')
     raw_id_fields = ('user',)
     readonly_fields = ('created_at', 'updated_at')
     
@@ -94,6 +94,6 @@ class UserLocationAdmin(admin.ModelAdmin):
     """사용자 위치 Admin"""
     list_display = ('user', 'latitude', 'longitude', 'updated_at')
     list_filter = ('updated_at',)
-    search_fields = ('user__user__username', 'user__user__phone_number')
+    search_fields = ('user__user__username', 'user__user__email')
     raw_id_fields = ('user',)
     readonly_fields = ('updated_at',)
