@@ -67,15 +67,21 @@ export const AuthProvider = ({ children }) => {
    */
   const login = async (userId, password) => {
     try {
-      const result = await mockAuthServer.login(userId, password);
+      // 실제 백엔드 API 호출
+      const result = await apiClient.login(userId, password);
       
       if (!result.success) {
-        throw new Error(result.message);
+        throw new Error(result.message || result.error || '로그인에 실패했습니다.');
       }
       
       // 사용자 정보 저장
-      await StorageService.saveCurrentUser(result.user);
-      setCurrentUser(result.user);
+      const userData = {
+        userId: result.user.username,
+        id: result.user.id,
+        phoneNumber: result.user.phone_number,
+      };
+      await StorageService.saveCurrentUser(userData);
+      setCurrentUser(userData);
       setIsLoggedIn(true);
       
       // 자동 마이그레이션 시도
@@ -94,7 +100,11 @@ export const AuthProvider = ({ children }) => {
       }
       
       console.log('✅ 로그인 완료:', userId);
-      return result;
+      return {
+        success: true,
+        message: '로그인 성공',
+        user: userData,
+      };
     } catch (error) {
       console.error('Login error:', error);
       throw error;
@@ -104,18 +114,23 @@ export const AuthProvider = ({ children }) => {
   /**
    * 회원가입
    */
-  const signup = async (userId, password, phoneNumber, verificationCode) => {
+  const signup = async (userId, password, email, verificationCode) => {
     try {
-      const result = await mockAuthServer.signup(userId, password, phoneNumber, verificationCode);
+      // 실제 백엔드 API 호출
+      const result = await apiClient.register(userId, password, email);
       
       if (!result.success) {
-        throw new Error(result.message);
+        throw new Error(result.message || result.error || '회원가입에 실패했습니다.');
       }
       
       // 회원가입 성공 후 자동 로그인은 하지 않음
       // 프로필 입력 화면으로 이동하도록 함
       console.log('✅ 회원가입 완료:', userId);
-      return result;
+      return {
+        success: true,
+        message: '회원가입이 완료되었습니다.',
+        user: result.user,
+      };
     } catch (error) {
       console.error('Signup error:', error);
       throw error;
@@ -165,6 +180,8 @@ export const AuthProvider = ({ children }) => {
    */
   const logout = async () => {
     try {
+      // 토큰 삭제
+      await StorageService.clearTokens();
       // 현재 사용자 정보만 삭제 (프로필/이상형은 유지)
       await StorageService.clearCurrentUser();
       setIsLoggedIn(false);
@@ -202,6 +219,11 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       console.error('Load profile error:', error);
+      // Refresh Token 만료 시 로그아웃 처리
+      if (error.message === 'REFRESH_TOKEN_EXPIRED' || error.message?.includes('REFRESH_TOKEN_EXPIRED')) {
+        console.log('🔄 Refresh Token 만료: 자동 로그아웃');
+        await logout();
+      }
       // 에러가 나도 기존 로컬 데이터는 유지
     }
   };
@@ -256,6 +278,11 @@ export const AuthProvider = ({ children }) => {
       console.log('✅ 프로필 업데이트 완료');
     } catch (error) {
       console.error('Update profile error:', error);
+      // Refresh Token 만료 시 로그아웃 처리
+      if (error.message === 'REFRESH_TOKEN_EXPIRED' || error.message?.includes('REFRESH_TOKEN_EXPIRED')) {
+        console.log('🔄 Refresh Token 만료: 자동 로그아웃');
+        await logout();
+      }
       throw error;
     }
   };

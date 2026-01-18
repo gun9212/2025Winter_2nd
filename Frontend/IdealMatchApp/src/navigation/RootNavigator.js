@@ -48,23 +48,19 @@ const RootNavigator = () => {
   };
 
   // 회원가입 핸들러
-  const handleSignup = async (userId, password, phoneNumber, verificationCode, navigation) => {
+  const handleSignup = async (userId, password, email, verificationCode, navigation) => {
     try {
-      const result = await signup(userId, password, phoneNumber, verificationCode);
-      if (!result.success) {
-        throw new Error(result.message);
+      const result = await signup(userId, password, email, verificationCode);
+      
+      // result가 없거나 success가 false인 경우 에러 발생
+      if (!result || !result.success) {
+        throw new Error(result?.message || result?.error || '회원가입에 실패했습니다.');
       }
       
-      // 회원가입 성공 후 로그인
-      Alert.alert('회원가입 완료', '프로필을 입력해주세요.', [
-        {
-          text: '확인',
-          onPress: async () => {
-            await login(userId, password);
-          },
-        },
-      ]);
+      // 회원가입 성공 - result를 반환하여 SignupScreen에서 처리하도록 함
+      return result;
     } catch (error) {
+      console.error('회원가입 핸들러 오류:', error);
       throw error;
     }
   };
@@ -108,8 +104,8 @@ const RootNavigator = () => {
               {(props) => (
                 <SignupScreen 
                   {...props} 
-                  onSignup={(userId, password, phoneNumber, verificationCode) => 
-                    handleSignup(userId, password, phoneNumber, verificationCode, props.navigation)
+                  onSignup={(userId, password, email, verificationCode) => 
+                    handleSignup(userId, password, email, verificationCode, props.navigation)
                   } 
                 />
               )}

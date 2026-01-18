@@ -13,6 +13,7 @@ import {
   Image,
 } from 'react-native';
 import { MockAuthService } from '../../services/mock';
+import { apiClient } from '../../services/api/apiClient';
 import { COLORS } from '../../constants';
 
 const LOGO_IMAGE = require('../../images/login_logo.png');
@@ -21,10 +22,11 @@ const SignupScreen = ({ navigation, onSignup }) => {
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
   const [codeVerified, setCodeVerified] = useState(false);
+  const [verifyingCode, setVerifyingCode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [timer, setTimer] = useState(0); // 타이머 (초 단위)
@@ -63,8 +65,10 @@ const SignupScreen = ({ navigation, onSignup }) => {
   };
 
   const handleSendCode = async () => {
-    if (!phoneNumber || phoneNumber.length < 10) {
-      Alert.alert('알림', '올바른 전화번호를 입력해주세요.');
+    // 이메일 형식 검증
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      Alert.alert('알림', '올바른 이메일 주소를 입력해주세요.');
       return;
     }
 
@@ -75,29 +79,88 @@ const SignupScreen = ({ navigation, onSignup }) => {
 
     setSendingCode(true);
     try {
-      await MockAuthService.sendVerificationCode(phoneNumber);
+      // 실제 백엔드 API 호출
+      const result = await apiClient.sendVerificationCode(email);
+      
+      if (!result.success) {
+        // 이미 등록된 이메일인 경우 특별 처리
+        if (result.error && result.error.includes('이미 등록된 이메일')) {
+          Alert.alert('알림', '이미 등록된 이메일입니다.');
+        } else {
+          Alert.alert('오류', result.message || result.error || '인증번호 전송에 실패했습니다.');
+        }
+        return;
+      }
+      
       setCodeSent(true);
-      setTimer(120); // 2분(120초) 타이머 초기화 및 시작
-      Alert.alert('인증번호 전송', `${phoneNumber}로 인증번호가 전송되었습니다.\n테스트 코드: 123456`);
+      setTimer(result.expires_in || 120); // 2분(120초) 타이머 초기화 및 시작
+      
+      // 개발 환경에서만 인증번호 표시
+      const devMessage = result.verification_code 
+        ? `\n개발 모드 인증번호: ${result.verification_code}`
+        : '';
+      
+      Alert.alert('인증번호 전송', `${email}로 인증번호가 전송되었습니다.${devMessage}`);
     } catch (error) {
-      Alert.alert('오류', error.message || '인증번호 전송에 실패했습니다.');
+      // 이미 등록된 이메일인 경우 특별 처리
+      if (error.message && error.message.includes('이미 등록된 이메일')) {
+        Alert.alert('알림', '이미 등록된 이메일입니다.');
+      } else {
+        Alert.alert('오류', error.message || '인증번호 전송에 실패했습니다.');
+      }
     } finally {
       setSendingCode(false);
     }
   };
 
-  const handleVerifyCode = () => {
-    if (verificationCode === '123456') {
+  const handleVerifyCode = async (code = null) => {
+    const codeToVerify = code || verificationCode;
+    
+    if (!codeToVerify) {
+      Alert.alert('알림', '인증번호를 입력해주세요.');
+      return;
+    }
+
+    if (codeToVerify.length !== 6) {
+      return; // 6자리가 아니면 조용히 반환 (입력 중일 수 있음)
+    }
+
+    if (!email) {
+      Alert.alert('알림', '이메일을 입력해주세요.');
+      return;
+    }
+
+    // 이미 인증 완료된 경우 중복 호출 방지
+    if (codeVerified && verificationCode === codeToVerify) {
+      return;
+    }
+
+    setVerifyingCode(true);
+    try {
+      // 실제 백엔드 API 호출
+      const result = await apiClient.verifyEmail(email, codeToVerify);
+      
+      if (!result.success) {
+        Alert.alert('오류', result.message || result.error || '인증번호가 일치하지 않습니다.');
+        setCodeVerified(false);
+        return;
+      }
+      
       setCodeVerified(true);
-    } else {
-      Alert.alert('오류', '인증번호가 일치하지 않습니다.');
+      setVerificationCode(codeToVerify); // 입력된 코드 저장
+      // 인증 완료 알림은 조용히 처리 (자동 인증이므로)
+    } catch (error) {
+      Alert.alert('오류', error.message || '인증번호 확인 중 오류가 발생했습니다.');
+      setCodeVerified(false);
+    } finally {
+      setVerifyingCode(false);
     }
   };
 
   const handleSignup = async () => {
     // 유효성 검증
     if (!userId.trim()) {
-      Alert.alert('알림', 'ID 또는 이메일을 입력해주세요.');
+      Alert.alert('알림', 'ID를 입력해주세요.');
       return;
     }
 
@@ -111,13 +174,13 @@ const SignupScreen = ({ navigation, onSignup }) => {
       return;
     }
 
-    if (password.length < 6) {
-      Alert.alert('알림', '비밀번호는 6자 이상이어야 합니다.');
+    if (password.length < 8) {
+      Alert.alert('알림', '비밀번호는 8자 이상이어야 합니다.');
       return;
     }
 
-    if (!phoneNumber) {
-      Alert.alert('알림', '전화번호를 입력해주세요.');
+    if (!email) {
+      Alert.alert('알림', '이메일을 입력해주세요.');
       return;
     }
 
@@ -138,8 +201,31 @@ const SignupScreen = ({ navigation, onSignup }) => {
 
     setLoading(true);
     try {
-      await onSignup(userId.trim(), password, phoneNumber, verificationCode);
+      const result = await onSignup(userId.trim(), password, email, verificationCode);
+      
+      // 회원가입 성공 확인
+      if (result && result.success) {
+        // Alert 표시 후 로그인 화면으로 이동
+        Alert.alert(
+          '회원가입 완료', 
+          '회원가입이 완료되었습니다.\n로그인 화면으로 이동합니다.',
+          [
+            {
+              text: '확인',
+              onPress: () => {
+                // 회원가입 성공 후 로그인 화면으로 이동 (replace로 스택에서 제거)
+                navigation.replace('Login');
+              },
+            },
+          ],
+          { cancelable: false } // 뒤로가기로 닫을 수 없도록 설정
+        );
+      } else {
+        // result.success가 false인 경우
+        Alert.alert('오류', result?.message || result?.error || '회원가입에 실패했습니다.');
+      }
     } catch (error) {
+      console.error('회원가입 오류:', error);
       Alert.alert('오류', error.message || '회원가입 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
@@ -210,24 +296,25 @@ const SignupScreen = ({ navigation, onSignup }) => {
             </View>
           </View>
 
-          {/* Phone Number with Send Code Button */}
+          {/* Email with Send Code Button */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>PHONE NUMBER</Text>
+            <Text style={styles.label}>EMAIL</Text>
             <View style={styles.phoneContainer}>
               <TextInput
                 style={[styles.input, styles.phoneInput]}
-                value={phoneNumber}
-                onChangeText={(text) => setPhoneNumber(text.replace(/[^0-9]/g, ''))}
-                placeholder="+82 10-0000-0000"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="user@example.com"
                 placeholderTextColor="#CBD5E1"
-                keyboardType="phone-pad"
-                maxLength={11}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
                 textAlign="center"
               />
               <TouchableOpacity
-                style={[styles.sendCodeButton, (sendingCode || !phoneNumber) && styles.sendCodeButtonDisabled]}
+                style={[styles.sendCodeButton, (sendingCode || !email) && styles.sendCodeButtonDisabled]}
                 onPress={handleSendCode}
-                disabled={sendingCode || !phoneNumber}
+                disabled={sendingCode || !email}
               >
                 {sendingCode ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
@@ -246,15 +333,13 @@ const SignupScreen = ({ navigation, onSignup }) => {
               <Text style={styles.label}>VERIFICATION CODE</Text>
               <View style={styles.codeInputContainer}>
                 <TextInput
-                  style={[styles.input, styles.codeInput]}
+                  style={[styles.input, styles.codeInput, codeVerified && styles.codeInputVerified]}
                   value={verificationCode}
                   onChangeText={(text) => {
                     setVerificationCode(text);
+                    // 6자리 입력 시 자동으로 인증 확인
                     if (text.length === 6) {
-                      // 자동으로 인증 확인
-                      if (text === '123456') {
-                        setCodeVerified(true);
-                      }
+                      handleVerifyCode(text);
                     } else {
                       setCodeVerified(false);
                     }
@@ -264,10 +349,21 @@ const SignupScreen = ({ navigation, onSignup }) => {
                   keyboardType="number-pad"
                   maxLength={6}
                   textAlign="center"
+                  editable={!codeVerified && !verifyingCode}
                 />
-                {timer > 0 && (
+                {timer > 0 && !codeVerified && (
                   <View style={styles.timerContainer}>
                     <Text style={styles.timerText}>{formatTime(timer)}</Text>
+                  </View>
+                )}
+                {verifyingCode && (
+                  <View style={styles.verifyingContainer}>
+                    <ActivityIndicator size="small" color={COLORS.primary || '#FF7EA6'} />
+                  </View>
+                )}
+                {codeVerified && (
+                  <View style={styles.verifiedContainer}>
+                    <Text style={styles.verifiedIcon}>✓</Text>
                   </View>
                 )}
               </View>
@@ -459,6 +555,32 @@ const styles = StyleSheet.create({
     fontSize: 18,
     letterSpacing: 8,
     paddingRight: 60,
+  },
+  codeInputVerified: {
+    borderColor: COLORS.primary || '#FF7EA6',
+    backgroundColor: 'rgba(255, 126, 166, 0.1)',
+  },
+  verifyingContainer: {
+    position: 'absolute',
+    right: 20,
+    top: 18,
+    padding: 8,
+  },
+  verifiedContainer: {
+    position: 'absolute',
+    right: 20,
+    top: 18,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary || '#FF7EA6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  verifiedIcon: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   timerContainer: {
     position: 'absolute',
