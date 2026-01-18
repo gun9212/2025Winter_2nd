@@ -2,11 +2,35 @@
 
 ## 📱 실제 앱 사용 시나리오별 API 사용
 
+## ⚠️ 구현 상태 요약
+
+### ✅ 구현 완료된 API
+- **API 1**: 회원가입 (`POST /api/users/auth/register/`)
+- **API 2**: 이메일 인증 (`POST /api/users/auth/verify-email/`)
+- **API 3**: 로그인 (`POST /api/users/auth/login/`)
+- **API 4**: 토큰 갱신 (`POST /api/users/auth/refresh/`)
+- **API 5**: 프로필 조회 (`GET /api/users/profile/`)
+- **API 6**: 프로필 생성/수정 (`POST/PUT /api/users/profile/`)
+- **API 7**: 프로필 완성도 확인 (`GET /api/users/profile/completeness/`)
+- **API 8**: 이상형 프로필 조회 (`GET /api/users/ideal-type/`)
+- **API 9**: 이상형 프로필 생성/수정 (`POST/PUT /api/users/ideal-type/`)
+- **API 10**: 위치 업데이트 (`POST /api/users/location/update/`)
+
+### ⚠️ 미구현 API
+- **API 11**: 현재 위치 조회 (`GET /api/users/location/`)
+- **API 12**: 매칭 가능 인원 수 조회 (`GET /api/matches/matchable-count/`)
+- **API 13**: 매칭 체크 (포그라운드) (`GET /api/matches/check/`)
+- **API 14**: 매칭 동의 업데이트 (`POST /api/users/consent/`)
+- **API 15**: 백그라운드 알림 등록 (`POST /api/notifications/register/`)
+- **API 16**: 비밀번호 재설정 요청 (`POST /api/users/auth/password-reset/request/`)
+- **API 17**: 비밀번호 재설정 인증 확인 (`POST /api/users/auth/password-reset/verify/`)
+- **API 18**: 비밀번호 재설정 (`POST /api/users/auth/password-reset/`)
+
 ---
 
 ## 🔐 1단계: 회원가입 및 로그인
 
-### API 1: 회원가입 (`POST /api/auth/register/`)
+### API 1: 회원가입 (`POST /api/users/auth/register/`)
 
 **기능:**
 - 새로운 사용자 계정을 생성합니다
@@ -28,7 +52,7 @@
 
 ---
 
-### API 2: 이메일 인증 (`POST /api/auth/verify-email/`)
+### API 2: 이메일 인증 (`POST /api/users/auth/verify-email/`)
 
 **기능:**
 - 이메일 인증번호를 검증합니다 / 인증번호 유효시간: 2분 (120초)
@@ -51,7 +75,7 @@
 
 ---
 
-### API 3: 로그인 (`POST /api/auth/login/`)
+### API 3: 로그인 (`POST /api/users/auth/login/`)
 
 **기능:**
 - 사용자 인증 후 JWT 토큰을 발급합니다
@@ -69,7 +93,7 @@
 
 ---
 
-### API 4: 토큰 갱신 (`POST /api/auth/refresh/`)
+### API 4: 토큰 갱신 (`POST /api/users/auth/refresh/`)
 
 **기능:**
 - 만료된 Access Token을 Refresh Token으로 새로 발급받습니다
@@ -114,7 +138,7 @@
 
 ---
 
-### API 16: 비밀번호 재설정 요청 (`POST /api/auth/password-reset/request/`)
+### API 16: 비밀번호 재설정 요청 (`POST /api/users/auth/password-reset/request/`) ⚠️ 미구현
 
 **기능:**
 - 아이디와 이메일을 받아 사용자 확인
@@ -134,7 +158,7 @@
 
 ---
 
-### API 17: 비밀번호 재설정 인증 확인 (`POST /api/auth/password-reset/verify/`)
+### API 17: 비밀번호 재설정 인증 확인 (`POST /api/users/auth/password-reset/verify/`) ⚠️ 미구현
 
 **기능:**
 - 비밀번호 재설정용 인증번호를 검증합니다
@@ -161,7 +185,7 @@
 
 ---
 
-### API 18: 비밀번호 재설정 (`POST /api/auth/password-reset/`)
+### API 18: 비밀번호 재설정 (`POST /api/users/auth/password-reset/`) ⚠️ 미구현
 
 **기능:**
 - 비밀번호 재설정 토큰과 새 비밀번호를 받아 비밀번호를 변경합니다
@@ -288,7 +312,7 @@
 
 ## 📍 4단계: 위치 추적
 
-### API 10: 위치 업데이트 (`POST /api/users/location/`)
+### API 10: 위치 업데이트 (`POST /api/users/location/update/`)
 
 **기능:**
 - 사용자의 현재 위치(위도, 경도)를 서버에 저장합니다
@@ -318,7 +342,7 @@
 
 ---
 
-### API 11: 현재 위치 조회 (`GET /api/users/location/`)
+### API 11: 현재 위치 조회 (`GET /api/users/location/`) ⚠️ 미구현
 
 **기능:**
 - 서버에 저장된 사용자의 최신 위치 정보를 가져옵니다
@@ -340,7 +364,7 @@
 
 ## 🎯 5단계: 매칭 시스템
 
-### API 12: 매칭 가능 인원 수 조회 (`GET /api/matches/matchable-count/`)
+### API 12: 매칭 가능 인원 수 조회 (`GET /api/matches/matchable-count/`) ⚠️ 미구현
 
 **기능:**
 - boundary(반경) 내에서 이상형 조건에 부합하는 사용자 수를 조회합니다
@@ -365,7 +389,7 @@
 
 ---
 
-### API 13: 매칭 체크 (포그라운드) (`GET /api/matches/check/`)
+### API 13: 매칭 체크 (포그라운드) (`GET /api/matches/check/`) ⚠️ 미구현
 
 **기능:**
 - 앱이 포그라운드에서 실행 중일 때 새로운 매칭이 발생했는지 확인합니다
@@ -396,7 +420,7 @@
 
 ## ⚙️ 6단계: 서비스 설정
 
-### API 14: 매칭 동의 업데이트 (`POST /api/users/consent/`) ( ON/OFF 기능 )
+### API 14: 매칭 동의 업데이트 (`POST /api/users/consent/`) ( ON/OFF 기능 ) ⚠️ 미구현
 
 **기능:**
 - 사용자가 매칭에 동의했는지 여부를 설정합니다
@@ -460,7 +484,7 @@
 
 ## 🔔 7단계: 백그라운드 알림 시스템
 
-### API 15: 백그라운드 알림 등록 (`POST /api/notifications/register/`)
+### API 15: 백그라운드 알림 등록 (`POST /api/notifications/register/`) ⚠️ 미구현
 
 **기능:**
 - 앱이 백그라운드에 있거나 화면이 꺼져있을 때 매칭 알림을 받기 위해 푸시 알림 토큰을 등록합니다
