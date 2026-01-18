@@ -74,7 +74,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
-ASGI_APPLICATION = 'config.asgi.application'
+# ASGI_APPLICATION = 'config.asgi.application'  # 임시 비활성화 (서버 시작 문제 해결용)
 
 
 # Database

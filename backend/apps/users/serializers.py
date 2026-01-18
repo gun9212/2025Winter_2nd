@@ -101,11 +101,12 @@ class IdealTypeProfileSerializer(serializers.ModelSerializer):
                     'age': '최소 나이는 최대 나이보다 작거나 같아야 합니다.'
                 })
         
-        # 선호 MBTI 검증
-        if data.get('preferred_mbti') and len(data['preferred_mbti']) == 0:
-            raise serializers.ValidationError({
-                'preferred_mbti': '선호 MBTI를 최소 1개 이상 선택해주세요.'
-            })
+        # 선호 MBTI 검증 (선택사항이지만 있으면 최소 1개 이상)
+        if 'preferred_mbti' in data and data.get('preferred_mbti') is not None:
+            if len(data['preferred_mbti']) == 0:
+                raise serializers.ValidationError({
+                    'preferred_mbti': '선호 MBTI를 최소 1개 이상 선택해주세요.'
+                })
         
         # 선호 성격 검증
         if data.get('preferred_personality') and len(data['preferred_personality']) == 0:
@@ -137,8 +138,9 @@ class LoginSerializer(serializers.Serializer):
     """
     로그인 Serializer
     API 3: POST /api/auth/login/
+    username 또는 email로 로그인 가능
     """
-    username = serializers.CharField(required=True, max_length=100, help_text='아이디')
+    username = serializers.CharField(required=True, max_length=254, help_text='아이디 또는 이메일')
     password = serializers.CharField(required=True, write_only=True, style={'input_type': 'password'}, help_text='비밀번호')
 
 

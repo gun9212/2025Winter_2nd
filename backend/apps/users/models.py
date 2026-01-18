@@ -155,12 +155,14 @@ class IdealTypeProfile(models.Model):
         verbose_name_plural = '이상형 프로필들'
     
     def clean(self):
-        """Validation: 모든 조건은 최소 1개 이상"""
+        """Validation: 성격과 관심사는 최소 1개 이상 필수, MBTI는 선택사항"""
         super().clean()
-        if not self.preferred_mbti or len(self.preferred_mbti) == 0:
+        # MBTI는 선택사항 (없어도 됨)
+        if self.preferred_mbti is not None and len(self.preferred_mbti) == 0:
             raise ValidationError({
                 'preferred_mbti': '선호 MBTI를 최소 1개 이상 선택해주세요.'
             })
+        # 성격과 관심사는 필수
         if not self.preferred_personality or len(self.preferred_personality) == 0:
             raise ValidationError({
                 'preferred_personality': '선호 성격 유형을 최소 1개 이상 선택해주세요.'

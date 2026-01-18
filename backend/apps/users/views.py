@@ -14,7 +14,7 @@ from decouple import config
 import boto3
 from botocore.exceptions import ClientError
 from .models import UserLocation, User, AuthUser
-from .serializers import UserLocationSerializer, UserSerializer, RegisterSerializer, LoginSerializer, EmailVerificationSerializer
+from .serializers import UserLocationSerializer, UserSerializer, RegisterSerializer, LoginSerializer, EmailVerificationSerializer, IdealTypeProfileSerializer
 
 
 @api_view(['POST'])
@@ -45,6 +45,25 @@ def register(request):
     if serializer.is_valid():
         user = serializer.save()
         
+        # 회원가입 시 이메일 인증 상태 확인
+        # verify_email API에서 인증번호를 확인했지만 사용자가 없어서 업데이트하지 못한 경우
+        # Redis에 인증번호가 사용되었는지 확인 (인증번호가 삭제되었다면 인증 완료된 것으로 간주)
+        email = user.email
+        cache_key = f'verification_code:email:{email}'
+        stored_code = cache.get(cache_key)
+        
+        # 인증번호가 없으면 이미 인증 완료된 것으로 간주
+        # (verify_email API에서 인증번호를 삭제했기 때문)
+        if stored_code is None:
+            # 인증 완료 플래그 확인 (별도 캐시 키 사용)
+            verification_completed_key = f'email_verified:email:{email}'
+            if cache.get(verification_completed_key):
+                user.email_verified = True
+                user.email_verified_at = timezone.now()
+                user.save(update_fields=['email_verified', 'email_verified_at'])
+                # 플래그 삭제
+                cache.delete(verification_completed_key)
+        
         # 응답 데이터 (비밀번호 제외)
         response_data = {
             'id': user.id,
@@ -68,7 +87,7 @@ def login(request):
     
     Request Body:
     {
-        "username": "user123",
+        "username": "user123" 또는 "user@example.com",
         "password": "password123"
     }
     
@@ -79,7 +98,7 @@ def login(request):
         "user": {
             "id": 1,
             "username": "user123",
-            "phone_number": "010-1234-5678"
+            "email": "user@example.com"
         }
     }
     """
@@ -88,11 +107,24 @@ def login(request):
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    username = serializer.validated_data['username']
+    username_or_email = serializer.validated_data['username']
     password = serializer.validated_data['password']
     
-    # 사용자 인증
-    user = authenticate(request, username=username, password=password)
+    # username 또는 email로 사용자 찾기
+    user = None
+    
+    # 이메일 형식인지 확인
+    if '@' in username_or_email:
+        # 이메일로 사용자 찾기
+        try:
+            user = AuthUser.objects.get(email=username_or_email)
+            # 이메일로 찾은 경우, username으로 인증 시도
+            user = authenticate(request, username=user.username, password=password)
+        except AuthUser.DoesNotExist:
+            user = None
+    else:
+        # username으로 인증 시도
+        user = authenticate(request, username=username_or_email, password=password)
     
     if user is None:
         return Response(
@@ -158,6 +190,13 @@ def send_verification_code(request):
     except ValidationError:
         return Response(
             {'error': '올바른 이메일 형식이 아닙니다.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # 이미 등록된 이메일인지 확인
+    if AuthUser.objects.filter(email=email).exists():
+        return Response(
+            {'error': '이미 등록된 이메일입니다.'},
             status=status.HTTP_400_BAD_REQUEST
         )
     
@@ -237,9 +276,12 @@ IdealMatch 팀
                     }
                 )
                 
+                # AWS SES로 이메일 발송 성공
                 if settings.DEBUG:
                     print(f"✅ AWS SES로 이메일 발송 완료: {email}")
                     print(f"   MessageId: {response.get('MessageId')}")
+                    # DEBUG 모드에서도 인증번호는 콘솔에 출력하지 않음 (보안)
+                    # 실제 이메일로 발송되었으므로 콘솔 출력 불필요
                 else:
                     # 프로덕션에서는 로그만 남기기 (민감 정보 출력 안 함)
                     print(f"✅ 이메일 발송 완료: {email}")
@@ -350,7 +392,12 @@ def verify_email(request):
     except AuthUser.DoesNotExist:
         # 회원가입 전 인증인 경우 (회원가입 화면에서 사용)
         # 인증번호만 확인하고 사용자 업데이트는 하지 않음
+        # 대신 인증 완료 플래그를 Redis에 저장 (회원가입 시 확인용)
         cache.delete(cache_key)
+        
+        # 인증 완료 플래그 저장 (회원가입 시 확인용, 5분 유효)
+        verification_completed_key = f'email_verified:email:{email}'
+        cache.set(verification_completed_key, True, timeout=300)  # 5분 유효
         
         return Response({
             'email_verified': True,
@@ -572,6 +619,160 @@ def update_profile(request):
     return profile_view(request)
 
 
+@api_view(['GET', 'POST', 'PUT'])
+@permission_classes([IsAuthenticated if not settings.DEBUG else AllowAny])
+def ideal_type_view(request):
+    """
+    이상형 프로필 조회/생성/수정 API
+    GET /api/users/ideal-type/ - 이상형 프로필 조회
+    POST /api/users/ideal-type/ - 이상형 프로필 생성
+    PUT /api/users/ideal-type/ - 이상형 프로필 수정
+    
+    개발 환경(DEBUG=True)에서는 인증 없이 테스트 가능
+    user_id를 query parameter 또는 request body에 포함하여 전송
+    """
+    from .models import IdealTypeProfile
+    
+    # GET 요청: 이상형 프로필 조회
+    if request.method == 'GET':
+        try:
+            # 개발 환경에서 인증 없이 테스트하는 경우
+            if settings.DEBUG and not request.user.is_authenticated:
+                user_id = request.query_params.get('user_id') or request.data.get('user_id')
+                if not user_id:
+                    return Response({
+                        'success': False,
+                        'error': '테스트 모드: user_id가 필요합니다. (예: ?user_id=1)'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                try:
+                    auth_user = AuthUser.objects.get(id=user_id)
+                    user_profile = auth_user.profile
+                    ideal_type = user_profile.ideal_type_profile
+                except (AuthUser.DoesNotExist, User.DoesNotExist):
+                    return Response({
+                        'success': False,
+                        'message': '프로필이 없습니다.'
+                    }, status=status.HTTP_404_NOT_FOUND)
+                except IdealTypeProfile.DoesNotExist:
+                    return Response({
+                        'success': False,
+                        'message': '이상형 프로필이 없습니다.'
+                    }, status=status.HTTP_404_NOT_FOUND)
+            else:
+                # 정상 모드: 인증된 사용자 사용
+                try:
+                    user_profile = request.user.profile
+                    ideal_type = user_profile.ideal_type_profile
+                except User.DoesNotExist:
+                    return Response({
+                        'success': False,
+                        'message': '프로필이 없습니다.'
+                    }, status=status.HTTP_404_NOT_FOUND)
+                except IdealTypeProfile.DoesNotExist:
+                    return Response({
+                        'success': False,
+                        'message': '이상형 프로필이 없습니다.'
+                    }, status=status.HTTP_404_NOT_FOUND)
+            
+            serializer = IdealTypeProfileSerializer(ideal_type)
+            return Response({
+                'success': True,
+                'data': serializer.data
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'이상형 프로필 조회 중 오류가 발생했습니다: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    # POST/PUT 요청: 이상형 프로필 생성/수정
+    else:  # POST or PUT
+        try:
+            # 개발 환경에서 인증 없이 테스트하는 경우
+            if settings.DEBUG and not request.user.is_authenticated:
+                user_id = request.data.get('user_id')
+                if not user_id:
+                    return Response({
+                        'success': False,
+                        'error': '테스트 모드: user_id가 필요합니다. (예: {"user_id": 1, "height_min": 160, ...})'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                try:
+                    auth_user = AuthUser.objects.get(id=user_id)
+                    user_profile = auth_user.profile
+                except User.DoesNotExist:
+                    return Response({
+                        'success': False,
+                        'error': '사용자 프로필이 없습니다. 먼저 프로필을 생성해주세요.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                try:
+                    ideal_type = user_profile.ideal_type_profile
+                    serializer = IdealTypeProfileSerializer(ideal_type, data=request.data, partial=request.method == 'PUT')
+                except IdealTypeProfile.DoesNotExist:
+                    # 이상형 프로필이 없으면 생성
+                    serializer = IdealTypeProfileSerializer(data=request.data)
+            else:
+                # 정상 모드: 인증된 사용자 사용
+                try:
+                    user_profile = request.user.profile
+                except User.DoesNotExist:
+                    return Response({
+                        'success': False,
+                        'error': '사용자 프로필이 없습니다. 먼저 프로필을 생성해주세요.'
+                    }, status=status.HTTP_400_BAD_REQUEST)
+                
+                try:
+                    ideal_type = user_profile.ideal_type_profile
+                    serializer = IdealTypeProfileSerializer(ideal_type, data=request.data, partial=request.method == 'PUT')
+                except IdealTypeProfile.DoesNotExist:
+                    # 이상형 프로필이 없으면 생성
+                    serializer = IdealTypeProfileSerializer(data=request.data)
+            
+            if serializer.is_valid():
+                # 개발 모드에서 user_id가 있는 경우
+                if settings.DEBUG and not request.user.is_authenticated and request.data.get('user_id'):
+                    user_id = request.data.get('user_id')
+                    auth_user = AuthUser.objects.get(id=user_id)
+                    user_profile = auth_user.profile
+                    serializer.save(user=user_profile)
+                else:
+                    serializer.save(user=request.user.profile)
+                
+                return Response({
+                    'success': True,
+                    'message': '이상형 프로필이 저장되었습니다.',
+                    'data': serializer.data
+                }, status=status.HTTP_200_OK if request.method == 'PUT' else status.HTTP_201_CREATED)
+            
+            # 에러 메시지를 읽기 쉬운 형식으로 변환
+            error_messages = []
+            for field, errors in serializer.errors.items():
+                if isinstance(errors, list):
+                    for error in errors:
+                        if isinstance(error, dict):
+                            error_messages.append(f"{field}: {', '.join(str(v) for v in error.values())}")
+                        else:
+                            error_messages.append(f"{field}: {str(error)}")
+                else:
+                    error_messages.append(f"{field}: {str(errors)}")
+            
+            error_message = '; '.join(error_messages) if error_messages else '입력 데이터가 올바르지 않습니다.'
+            
+            return Response({
+                'success': False,
+                'error': error_message,
+                'errors': serializer.errors  # 상세 에러 정보도 포함
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': f'이상형 프로필 저장 중 오류가 발생했습니다: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated if not settings.DEBUG else AllowAny])
 def check_profile_completeness(request):
@@ -624,11 +825,12 @@ def check_profile_completeness(request):
         try:
             ideal_type = profile.ideal_type_profile
             if ideal_type:
+                # 필수 필드 확인 (MBTI는 선택사항)
                 ideal_fields = ['height_min', 'height_max', 'age_min', 'age_max', 
-                              'preferred_mbti', 'preferred_personality', 'preferred_interests']
+                              'preferred_personality', 'preferred_interests']
                 ideal_type_complete = all(getattr(ideal_type, field, None) for field in ideal_fields)
+                # 성격과 관심사는 최소 1개 이상 필수
                 ideal_type_complete = ideal_type_complete and \
-                    len(ideal_type.preferred_mbti) > 0 and \
                     len(ideal_type.preferred_personality) > 0 and \
                     len(ideal_type.preferred_interests) > 0
         except Exception:

@@ -29,8 +29,8 @@ if superusers.exists():
     
     # 첫 번째 슈퍼유저 비밀번호 재설정
     first_superuser = superusers.first()
-    new_password = 'admin123'  # 기본 비밀번호
-    
+    new_password = '김준영123'  # 기본 비밀번호 
+    email = 'junyoungkim@example.com'
     print(f"🔑 슈퍼유저 '{first_superuser.username}'의 비밀번호를 재설정합니다...")
     first_superuser.set_password(new_password)
     first_superuser.is_staff = True
