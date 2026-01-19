@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { AuthContext } from '../context';
@@ -12,6 +12,7 @@ import { IdealTypeInputScreen } from '../screens/IdealType';
 import { MainScreen } from '../screens/Main';
 import { ActivityIndicator, View, StyleSheet, Alert } from 'react-native';
 import { COLORS } from '../constants';
+import { apiClient } from '../services/api/apiClient';
 
 const Stack = createStackNavigator();
 
@@ -26,6 +27,107 @@ const RootNavigator = () => {
     verifyUserForReset,
     resetPassword,
   } = useContext(AuthContext);
+  
+  const navigationRef = useRef(null);
+  const hasCheckedProfile = useRef(false);
+
+  // 로그인 후 프로필/이상형 상태 확인 및 화면 전환
+  useEffect(() => {
+    // 로그인하지 않았거나 로딩 중이면 실행하지 않음
+    if (!isLoggedIn || isLoading || !navigationRef.current) {
+      // 로그아웃 시 플래그 리셋
+      if (!isLoggedIn) {
+        hasCheckedProfile.current = false;
+      }
+      return;
+    }
+    
+    // 프로필/이상형이 저장되면 재확인하도록 플래그 리셋
+    if (userProfile || idealType) {
+      hasCheckedProfile.current = false;
+    }
+    
+    if (!hasCheckedProfile.current) {
+      hasCheckedProfile.current = true;
+      
+      const checkAndNavigate = async () => {
+        try {
+          // 현재 화면 확인
+          const currentRoute = navigationRef.current?.getCurrentRoute();
+          const currentRouteName = currentRoute?.name;
+          
+          // 이미 프로필 입력 화면이나 이상형 입력 화면에 있으면 처리하지 않음
+          if (currentRouteName === 'ProfileInput' || currentRouteName === 'IdealTypeInput') {
+            return;
+          }
+          
+          // 프로필 완성도 확인
+          const completenessResult = await apiClient.checkProfileCompleteness();
+          
+          if (!completenessResult.success) {
+            console.log('⚠️ 프로필 완성도 확인 실패 - 로그인 상태 확인 필요');
+            // 프로필 완성도 확인 실패 시 로그인 화면으로 이동하지 않음
+            // (이미 로그인된 상태이므로)
+            return;
+          }
+          
+          const hasProfile = completenessResult.profile_complete;
+          const hasIdealType = completenessResult.ideal_type_complete;
+          
+          // 프로필이 없으면 프로필 입력 화면으로 이동
+          if (!hasProfile) {
+            setTimeout(() => {
+              Alert.alert(
+                '프로필 입력 필요',
+                '당신의 프로필을 입력해주세요',
+                [
+                  {
+                    text: '확인',
+                    onPress: () => {
+                      navigationRef.current?.navigate('ProfileInput');
+                    },
+                  },
+                ]
+              );
+            }, 300);
+            return;
+          }
+          
+          // 프로필은 있지만 이상형이 없으면 이상형 입력 화면으로 이동
+          if (!hasIdealType) {
+            setTimeout(() => {
+              Alert.alert(
+                '이상형 입력 필요',
+                '이상형을 입력하세요',
+                [
+                  {
+                    text: '확인',
+                    onPress: () => {
+                      navigationRef.current?.navigate('IdealTypeInput');
+                    },
+                  },
+                ]
+              );
+            }, 300);
+            return;
+          }
+          
+          // 프로필과 이상형이 모두 있으면 메인 화면 유지
+          if (currentRouteName !== 'Main') {
+            navigationRef.current?.navigate('Main');
+          }
+        } catch (error) {
+          console.error('프로필 확인 오류:', error);
+          // 에러 발생 시에도 로그인 화면으로 이동하지 않음
+        }
+      };
+      
+      // 약간의 지연 후 확인 (메인 화면이 먼저 렌더링되도록)
+      setTimeout(() => {
+        checkAndNavigate();
+      }, 500);
+    }
+  }, [isLoggedIn, isLoading, userProfile, idealType]);
 
   if (isLoading) {
     return (
@@ -92,7 +194,7 @@ const RootNavigator = () => {
   };
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!isLoggedIn ? (
           // ========== 로그인 전 ==========

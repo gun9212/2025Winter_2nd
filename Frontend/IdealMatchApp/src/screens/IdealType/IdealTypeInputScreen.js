@@ -4,6 +4,7 @@ import { Button, Input } from '../../components/common';
 import {
   PersonalitySelector,
   InterestSelector,
+  MBTIMultiSelector,
 } from '../../components/profile';
 import { AuthContext } from '../../context';
 import { COLORS } from '../../constants';
@@ -14,6 +15,7 @@ const IdealTypeInputScreen = ({ navigation }) => {
   const [heightMax, setHeightMax] = useState('');
   const [ageMin, setAgeMin] = useState('');
   const [ageMax, setAgeMax] = useState('');
+  const [preferredMBTIs, setPreferredMBTIs] = useState([]);
   const [personalities, setPersonalities] = useState([]);
   const [interests, setInterests] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -26,6 +28,7 @@ const IdealTypeInputScreen = ({ navigation }) => {
       setAgeMax(idealType.maxAge?.toString() || '');
       setHeightMin(idealType.minHeight?.toString() || '');
       setHeightMax(idealType.maxHeight?.toString() || '');
+      setPreferredMBTIs(idealType.preferredMBTI || []);
       setPersonalities(idealType.preferredPersonalities || []);
       setInterests(idealType.preferredInterests || []);
     }
@@ -98,6 +101,7 @@ const IdealTypeInputScreen = ({ navigation }) => {
         maxHeight: parseInt(heightMax),
         minAge: parseInt(ageMin),
         maxAge: parseInt(ageMax),
+        preferredMBTI: preferredMBTIs,
         preferredPersonalities: personalities,
         preferredInterests: interests,
       };
@@ -123,7 +127,12 @@ const IdealTypeInputScreen = ({ navigation }) => {
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView 
+      style={styles.scrollView}
+      contentContainerStyle={styles.container}
+      showsVerticalScrollIndicator={true}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.header}>이상형 입력</Text>
       <Text style={styles.subtitle}>선호하는 이상형 조건을 입력해주세요</Text>
 
@@ -185,6 +194,15 @@ const IdealTypeInputScreen = ({ navigation }) => {
         </View>
       </View>
 
+      {/* 선호 MBTI */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>선호하는 MBTI</Text>
+        <MBTIMultiSelector
+          selectedMBTIs={preferredMBTIs}
+          onSelect={setPreferredMBTIs}
+        />
+      </View>
+
       {/* 선호 성격 */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>선호하는 성격</Text>
@@ -217,10 +235,13 @@ const IdealTypeInputScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
+  scrollView: {
     flex: 1,
-    padding: 20,
     backgroundColor: '#fff',
+  },
+  container: {
+    padding: 20,
+    paddingBottom: 40,
   },
   header: {
     fontSize: 28,

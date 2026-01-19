@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
-import { MockAuthService } from '../../services/mock';
+import { apiClient } from '../../services/api/apiClient';
 import { COLORS } from '../../constants';
 
 const LOGO_IMAGE = require('../../images/login_logo.png');
@@ -22,10 +22,11 @@ const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
 
   // Step 1: 본인 확인
   const [userId, setUserId] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [email, setEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
   const [verified, setVerified] = useState(false);
+  const [resetToken, setResetToken] = useState(null); // API 17에서 받은 reset_token 저장
 
   // Step 2: 비밀번호 재설정
   const [newPassword, setNewPassword] = useState('');
@@ -70,8 +71,13 @@ const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
   };
 
   const handleSendCode = async () => {
-    if (!phoneNumber || phoneNumber.length < 10) {
-      Alert.alert('알림', '올바른 전화번호를 입력해주세요.');
+    if (!userId.trim()) {
+      Alert.alert('알림', 'ID를 입력해주세요.');
+      return;
+    }
+
+    if (!email || !email.includes('@')) {
+      Alert.alert('알림', '올바른 이메일을 입력해주세요.');
       return;
     }
 
@@ -82,10 +88,20 @@ const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
 
     setSendingCode(true);
     try {
-      await MockAuthService.sendVerificationCode(phoneNumber);
+      const result = await apiClient.passwordResetRequest(userId.trim(), email);
+      
+      if (!result.success) {
+        throw new Error(result.error || result.message || '인증번호 전송에 실패했습니다.');
+      }
+      
       setCodeSent(true);
       setTimer(120); // 2분(120초) 타이머 초기화 및 시작
-      Alert.alert('인증번호 전송', `${phoneNumber}로 인증번호가 전송되었습니다.\n테스트 코드: 123456`);
+      
+      const message = __DEV__ && result.verification_code
+        ? `${email}로 인증번호가 전송되었습니다.\n테스트 코드: ${result.verification_code}`
+        : `${email}로 인증번호가 전송되었습니다.`;
+      
+      Alert.alert('인증번호 전송', message);
     } catch (error) {
       Alert.alert('오류', error.message || '인증번호 전송에 실패했습니다.');
     } finally {
@@ -99,8 +115,8 @@ const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
       return;
     }
 
-    if (!phoneNumber) {
-      Alert.alert('알림', '전화번호를 입력해주세요.');
+    if (!email || !email.includes('@')) {
+      Alert.alert('알림', '이메일을 입력해주세요.');
       return;
     }
 
@@ -111,8 +127,16 @@ const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
 
     setLoading(true);
     try {
-      await onVerifyUser(userId.trim(), phoneNumber, verificationCode);
+      const result = await apiClient.passwordResetVerify(userId.trim(), email, verificationCode);
+      
+      if (!result.success) {
+        throw new Error(result.error || result.message || '본인 확인에 실패했습니다.');
+      }
+      
+      // reset_token 저장
+      setResetToken(result.reset_token);
       setVerified(true);
+      
       // 잠시 후 Step 2로 이동
       setTimeout(() => {
         setStep(2);
@@ -130,8 +154,8 @@ const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
       return;
     }
 
-    if (newPassword.length < 6) {
-      Alert.alert('알림', '비밀번호는 6자 이상이어야 합니다.');
+    if (newPassword.length < 8) {
+      Alert.alert('알림', '비밀번호는 8자 이상이어야 합니다.');
       return;
     }
 
@@ -140,9 +164,19 @@ const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
       return;
     }
 
+    if (!resetToken) {
+      Alert.alert('오류', '인증이 완료되지 않았습니다. 다시 시도해주세요.');
+      return;
+    }
+
     setLoading(true);
     try {
-      await onResetPassword(userId.trim(), newPassword);
+      const result = await apiClient.passwordReset(resetToken, newPassword);
+      
+      if (!result.success) {
+        throw new Error(result.error || result.message || '비밀번호 재설정에 실패했습니다.');
+      }
+      
       Alert.alert('완료', '비밀번호가 재설정되었습니다.', [
         {
           text: '확인',
@@ -202,22 +236,23 @@ const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
                 </View>
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>PHONE NUMBER</Text>
+                  <Text style={styles.label}>EMAIL</Text>
                   <View style={styles.phoneContainer}>
                     <TextInput
                       style={[styles.input, styles.phoneInput]}
-                      value={phoneNumber}
-                      onChangeText={(text) => setPhoneNumber(text.replace(/[^0-9]/g, ''))}
-                      placeholder="010-0000-0000"
+                      value={email}
+                      onChangeText={setEmail}
+                      placeholder="user@example.com"
                       placeholderTextColor="#CBD5E1"
-                      keyboardType="phone-pad"
-                      maxLength={11}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
                       textAlign="center"
                     />
                     <TouchableOpacity
-                      style={[styles.sendCodeButton, (sendingCode || !phoneNumber) && styles.sendCodeButtonDisabled]}
+                      style={[styles.sendCodeButton, (sendingCode || !email || !userId.trim()) && styles.sendCodeButtonDisabled]}
                       onPress={handleSendCode}
-                      disabled={sendingCode || !phoneNumber}
+                      disabled={sendingCode || !email || !userId.trim()}
                     >
                       {sendingCode ? (
                         <ActivityIndicator size="small" color="#FFFFFF" />

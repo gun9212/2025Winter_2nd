@@ -30,6 +30,18 @@ export const AuthProvider = ({ children }) => {
     try {
       console.log('🔍 저장된 데이터 불러오는 중...');
       
+      // JWT 토큰 확인 (토큰이 있어야만 로그인 상태로 인식)
+      const accessToken = await StorageService.getAccessToken();
+      
+      if (!accessToken) {
+        console.log('❌ JWT 토큰 없음 - 로그인 필요');
+        // 토큰이 없으면 사용자 정보도 삭제
+        await StorageService.clearCurrentUser();
+        setIsLoggedIn(false);
+        setIsLoading(false);
+        return;
+      }
+      
       // 현재 로그인된 사용자 확인
       const user = await StorageService.getCurrentUser();
       
@@ -51,12 +63,38 @@ export const AuthProvider = ({ children }) => {
           setIdealType(ideal);
         }
         
-        setIsLoggedIn(true);
+        // 프로필 완성도 확인 (토큰 유효성도 함께 확인)
+        try {
+          const completenessResult = await apiClient.checkProfileCompleteness();
+          if (completenessResult.success) {
+            // 토큰이 유효하면 로그인 상태 유지
+            setIsLoggedIn(true);
+          } else {
+            // 토큰이 만료되었을 수 있음
+            console.log('⚠️ 프로필 완성도 확인 실패 (토큰 만료 가능)');
+            await StorageService.clearTokens();
+            await StorageService.clearCurrentUser();
+            setIsLoggedIn(false);
+          }
+        } catch (error) {
+          console.log('⚠️ 프로필 완성도 확인 실패 (토큰 만료 가능):', error.message);
+          // 토큰이 만료되었을 수 있으므로 로그아웃 처리
+          await StorageService.clearTokens();
+          await StorageService.clearCurrentUser();
+          setIsLoggedIn(false);
+        }
       } else {
-        console.log('❌ 로그인된 사용자 없음');
+        console.log('❌ 사용자 정보 없음 - 로그인 필요');
+        // 사용자 정보가 없으면 토큰도 삭제
+        await StorageService.clearTokens();
+        setIsLoggedIn(false);
       }
     } catch (error) {
       console.error('Failed to load auth status:', error);
+      // 오류 발생 시 로그아웃 상태로 설정
+      await StorageService.clearTokens();
+      await StorageService.clearCurrentUser();
+      setIsLoggedIn(false);
     } finally {
       setIsLoading(false);
     }
@@ -139,13 +177,14 @@ export const AuthProvider = ({ children }) => {
 
   /**
    * 비밀번호 재설정을 위한 본인 확인
+   * (현재는 PasswordResetScreen에서 직접 apiClient를 사용하므로 사용되지 않음)
    */
-  const verifyUserForReset = async (userId, phoneNumber, verificationCode) => {
+  const verifyUserForReset = async (userId, email, verificationCode) => {
     try {
-      const result = await mockAuthServer.verifyUserForReset(userId, phoneNumber, verificationCode);
+      const result = await apiClient.passwordResetVerify(userId, email, verificationCode);
       
       if (!result.success) {
-        throw new Error(result.message);
+        throw new Error(result.error || result.message || '본인 확인에 실패했습니다.');
       }
       
       console.log('✅ 본인 확인 완료:', userId);
@@ -158,16 +197,17 @@ export const AuthProvider = ({ children }) => {
 
   /**
    * 비밀번호 재설정
+   * (현재는 PasswordResetScreen에서 직접 apiClient를 사용하므로 사용되지 않음)
    */
-  const resetPassword = async (userId, newPassword) => {
+  const resetPassword = async (resetToken, newPassword) => {
     try {
-      const result = await mockAuthServer.resetPassword(userId, newPassword);
+      const result = await apiClient.passwordReset(resetToken, newPassword);
       
       if (!result.success) {
-        throw new Error(result.message);
+        throw new Error(result.error || result.message || '비밀번호 재설정에 실패했습니다.');
       }
       
-      console.log('✅ 비밀번호 재설정 완료:', userId);
+      console.log('✅ 비밀번호 재설정 완료');
       return result;
     } catch (error) {
       console.error('Reset password error:', error);
@@ -296,15 +336,51 @@ export const AuthProvider = ({ children }) => {
         throw new Error('로그인된 사용자가 없습니다.');
       }
       
-      await StorageService.saveIdealType(ideal, currentUser.userId);
-      setIdealType(ideal);
+      // 실제 백엔드 API 호출
+      const result = await apiClient.updateIdealType(ideal);
       
-      // 서버에 플래그 업데이트
-      await mockAuthServer.updateUserFlags(currentUser.userId, undefined, true);
+      if (!result.success) {
+        // 에러 메시지 추출 (객체인 경우 처리)
+        let errorMessage = '이상형 프로필 업데이트에 실패했습니다.';
+        if (result.error) {
+          if (typeof result.error === 'string') {
+            errorMessage = result.error;
+          } else if (typeof result.error === 'object') {
+            errorMessage = JSON.stringify(result.error);
+          }
+        }
+        throw new Error(errorMessage);
+      }
+      
+      // 응답 데이터를 프론트엔드 형식으로 변환
+      const responseData = result.data || result;
+      if (!responseData) {
+        throw new Error('이상형 프로필 저장 응답 데이터가 없습니다.');
+      }
+      
+      const updatedIdealType = {
+        minHeight: responseData.height_min,
+        maxHeight: responseData.height_max,
+        minAge: responseData.age_min,
+        maxAge: responseData.age_max,
+        preferredMBTI: responseData.preferred_mbti || [],
+        preferredPersonalities: responseData.preferred_personality || [],
+        preferredInterests: responseData.preferred_interests || [],
+        matchThreshold: responseData.match_threshold || 3,
+      };
+      
+      // 로컬 저장소에도 저장
+      await StorageService.saveIdealType(updatedIdealType, currentUser.userId);
+      setIdealType(updatedIdealType);
       
       console.log('✅ 이상형 업데이트 완료');
     } catch (error) {
       console.error('Update ideal type error:', error);
+      // Refresh Token 만료 시 로그아웃 처리
+      if (error.message === 'REFRESH_TOKEN_EXPIRED' || error.message?.includes('REFRESH_TOKEN_EXPIRED')) {
+        console.log('🔄 Refresh Token 만료: 자동 로그아웃');
+        await logout();
+      }
       throw error;
     }
   };

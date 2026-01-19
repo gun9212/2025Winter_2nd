@@ -21,7 +21,7 @@ import { DEFAULT_BACKGROUND_INTERVAL, FOREGROUND_INTERVAL } from '../../constant
 import LoginLogo from '../../images/login_logo.png';
 
 const MainScreen = ({ navigation }) => {
-  const { userProfile, idealType, logout } = useContext(AuthContext);
+  const { userProfile, idealType, logout, isLoggedIn } = useContext(AuthContext);
   const [location, setLocation] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [locationError, setLocationError] = useState(null);
@@ -35,6 +35,13 @@ const MainScreen = ({ navigation }) => {
   const backgroundIntervalRef = useRef(null);
 
   useEffect(() => {
+    // 로그인하지 않은 경우 위치 업데이트 하지 않음
+    if (!isLoggedIn) {
+      console.log('⚠️ 로그인하지 않음 - 위치 업데이트 중단');
+      setIsLoading(false);
+      return;
+    }
+
     initializeLocation();
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
@@ -51,7 +58,7 @@ const MainScreen = ({ navigation }) => {
       }
       subscription?.remove();
     };
-  }, []);
+  }, [isLoggedIn]);
 
   useEffect(() => {
     const hasProfile = userProfile && userProfile.age && userProfile.gender;
@@ -203,6 +210,11 @@ const MainScreen = ({ navigation }) => {
   };
 
   const sendLocationToServer = async (currentLocation) => {
+    // 로그인하지 않은 경우 위치 업데이트 하지 않음
+    if (!isLoggedIn) {
+      console.log('⚠️ 로그인하지 않음 - 위치 업데이트 중단');
+      return;
+    }
     try {
       console.log('🌐 서버로 위치 전송 중...', {
         latitude: currentLocation.latitude.toFixed(6),
@@ -335,7 +347,7 @@ const MainScreen = ({ navigation }) => {
         <View style={styles.buttonGrid}>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => navigation.navigate('ProfileInput')}
+            onPress={() => navigation.navigate('ProfileInput', { isEdit: true })}
             activeOpacity={0.8}
           >
             <Text style={styles.actionButtonIcon}>👤</Text>

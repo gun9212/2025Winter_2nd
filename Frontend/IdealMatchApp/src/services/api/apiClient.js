@@ -3,6 +3,73 @@ import { StorageService } from '../storage';
 import { Platform } from 'react-native';
 
 /**
+ * Base64 디코딩 함수 (React Native용)
+ * @param {string} str - Base64 인코딩된 문자열
+ * @returns {string} 디코딩된 문자열
+ */
+function base64Decode(str) {
+  try {
+    // Base64 URL 안전 문자를 일반 Base64로 변환
+    let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    
+    // 패딩 추가
+    while (base64.length % 4) {
+      base64 += '=';
+    }
+    
+    // React Native에서 사용 가능한 방법으로 디코딩
+    // Node.js 환경에서는 Buffer 사용, 브라우저에서는 atob 사용
+    if (typeof Buffer !== 'undefined' && Buffer.from) {
+      // Node.js 환경 (Metro bundler)
+      try {
+        return Buffer.from(base64, 'base64').toString('utf-8');
+      } catch (e) {
+        // Buffer가 작동하지 않으면 폴백으로
+      }
+    }
+    
+    if (typeof atob !== 'undefined') {
+      // 브라우저 환경
+      return atob(base64);
+    }
+    
+    // 직접 구현 (폴백) - React Native용
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+    let output = '';
+    let i = 0;
+    
+    // base64 문자열 정리
+    base64 = base64.replace(/[^A-Za-z0-9\+\/\=]/g, '');
+    
+    while (i < base64.length) {
+      const enc1 = chars.indexOf(base64.charAt(i++));
+      const enc2 = chars.indexOf(base64.charAt(i++));
+      const enc3 = chars.indexOf(base64.charAt(i++));
+      const enc4 = chars.indexOf(base64.charAt(i++));
+      
+      const chr1 = (enc1 << 2) | (enc2 >> 4);
+      const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+      const chr3 = ((enc3 & 3) << 6) | enc4;
+      
+      output += String.fromCharCode(chr1);
+      
+      if (enc3 !== 64) {
+        output += String.fromCharCode(chr2);
+      }
+      if (enc4 !== 64) {
+        output += String.fromCharCode(chr3);
+      }
+    }
+    
+    return output;
+  } catch (error) {
+    console.error('❌ Base64 디코딩 실패:', error);
+    console.error('   입력 문자열:', str);
+    throw error;
+  }
+}
+
+/**
  * JWT 토큰 디코딩 유틸리티
  * @param {string} token - JWT 토큰
  * @returns {Object|null} 디코딩된 토큰 페이로드 또는 null
@@ -11,14 +78,30 @@ function decodeJWT(token) {
   try {
     if (!token) return null;
     const parts = token.split('.');
-    if (parts.length !== 3) return null;
+    if (parts.length !== 3) {
+      console.warn('⚠️ JWT 토큰 형식이 올바르지 않습니다:', parts.length, 'parts');
+      return null;
+    }
     
     // Base64 URL 디코딩
     const payload = parts[1];
-    const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
-    return JSON.parse(decoded);
+    if (!payload) {
+      console.warn('⚠️ JWT 페이로드가 비어있습니다');
+      return null;
+    }
+    
+    const decoded = base64Decode(payload);
+    if (!decoded || decoded.trim().length === 0) {
+      console.warn('⚠️ Base64 디코딩 결과가 비어있습니다');
+      return null;
+    }
+    
+    // JSON 파싱
+    const parsed = JSON.parse(decoded);
+    return parsed;
   } catch (error) {
     console.error('❌ JWT 디코딩 실패:', error);
+    console.error('   토큰 일부:', token ? token.substring(0, 50) + '...' : 'null');
     return null;
   }
 }
@@ -104,6 +187,11 @@ class ApiClient {
           }),
         });
 
+        // 네트워크 오류 확인
+        if (!response.ok && response.status === 0) {
+          throw new Error('Network request failed');
+        }
+
         const data = await response.json();
 
         if (!response.ok) {
@@ -159,9 +247,15 @@ class ApiClient {
         console.log('⏰ 토큰이 곧 만료됩니다. 사전 갱신 시도...');
         try {
           await this.refreshToken();
+          console.log('✅ 사전 갱신 성공');
         } catch (error) {
           // 사전 갱신 실패해도 원래 요청은 시도 (401 에러 시 자동 갱신으로 처리)
-          console.warn('⚠️ 사전 갱신 실패, 원래 요청 계속 진행:', error.message);
+          // 네트워크 오류는 무시 (서버가 꺼져있을 수 있음)
+          if (error.message && error.message.includes('Network request failed')) {
+            console.log('ℹ️ 사전 갱신 실패 (네트워크 오류), 원래 요청 계속 진행');
+          } else {
+            console.warn('⚠️ 사전 갱신 실패, 원래 요청 계속 진행:', error.message || error);
+          }
         }
       }
     }
@@ -207,11 +301,29 @@ class ApiClient {
       if (isJson) {
         data = await response.json();
       } else {
-        data = await response.text();
+        const textData = await response.text();
+        // HTML 응답인 경우 (404, 500 등)
+        if (textData.trim().startsWith('<!DOCTYPE') || textData.trim().startsWith('<html')) {
+          console.error('❌ HTML 응답 받음 (잘못된 URL 또는 서버 오류):', {
+            url,
+            status: response.status,
+            contentType,
+            responsePreview: textData.substring(0, 200),
+          });
+          throw new Error(`서버 오류: 잘못된 URL이거나 서버가 HTML을 반환했습니다. (${response.status})`);
+        }
+        data = textData;
       }
 
       // 에러 처리
       if (!response.ok) {
+        // 에러 응답 로깅 (디버깅용)
+        console.error('❌ API 에러 응답:', {
+          status: response.status,
+          statusText: response.statusText,
+          data: data,
+        });
+        
         // 401 Unauthorized - 토큰 만료 또는 인증 실패
         if (response.status === 401 && requireAuth) {
           // 시나리오 1: 자동 갱신
@@ -262,8 +374,41 @@ class ApiClient {
           throw new Error('서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
         }
 
-        // 기타 에러
-        const errorMessage = data?.error || data?.message || `요청 실패 (${response.status})`;
+        // 기타 에러 (400 Bad Request 등)
+        // 백엔드에서 반환하는 에러 메시지 처리
+        let errorMessage = `요청 실패 (${response.status})`;
+        
+        if (data) {
+          // serializer.errors 객체인 경우 처리
+          if (typeof data === 'object' && !Array.isArray(data)) {
+            // Django REST Framework의 serializer.errors 형식 처리
+            if (data.error) {
+              errorMessage = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+            } else if (data.message) {
+              errorMessage = data.message;
+            } else if (data.username || data.password) {
+              // 필드별 에러 메시지 조합
+              const fieldErrors = [];
+              if (data.username) {
+                fieldErrors.push(`아이디: ${Array.isArray(data.username) ? data.username[0] : data.username}`);
+              }
+              if (data.password) {
+                fieldErrors.push(`비밀번호: ${Array.isArray(data.password) ? data.password[0] : data.password}`);
+              }
+              errorMessage = fieldErrors.join(', ') || errorMessage;
+            } else {
+              // 다른 필드 에러들
+              const errorKeys = Object.keys(data);
+              if (errorKeys.length > 0) {
+                const firstError = data[errorKeys[0]];
+                errorMessage = Array.isArray(firstError) ? firstError[0] : String(firstError);
+              }
+            }
+          } else if (typeof data === 'string') {
+            errorMessage = data;
+          }
+        }
+        
         throw new Error(errorMessage);
       }
 
@@ -454,6 +599,103 @@ class ApiClient {
   }
 
   /**
+   * 이상형 프로필 조회
+   * API 8: GET /api/users/ideal-type/
+   * @returns {Promise<Object>} 이상형 프로필 정보
+   */
+  async getIdealType() {
+    try {
+      const response = await this.request('/users/ideal-type/', {
+        method: 'GET',
+      });
+
+      return {
+        success: true,
+        data: response.data || response,
+      };
+    } catch (error) {
+      console.error('❌ 이상형 프로필 조회 실패:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * 이상형 프로필 생성/수정
+   * API 9: POST /api/users/ideal-type/ (생성) 또는 PUT /api/users/ideal-type/ (수정)
+   * @param {Object} idealTypeData - 이상형 프로필 데이터
+   * @returns {Promise<Object>} 저장 결과
+   */
+  async updateIdealType(idealTypeData) {
+    try {
+      // 프론트엔드 필드명을 백엔드 형식으로 변환
+      const requestBody = {
+        height_min: idealTypeData.minHeight,
+        height_max: idealTypeData.maxHeight,
+        age_min: idealTypeData.minAge,
+        age_max: idealTypeData.maxAge,
+        preferred_mbti: idealTypeData.preferredMBTI || [], // MBTI는 선택사항이지만 빈 배열로 전송
+        preferred_personality: idealTypeData.preferredPersonalities || [],
+        preferred_interests: idealTypeData.preferredInterests || [],
+        match_threshold: idealTypeData.matchThreshold || 3,
+      };
+
+      console.log('🌐 이상형 프로필 저장 API 요청:', {
+        url: `${this.baseURL}/users/ideal-type/`,
+        method: 'POST',
+        body: requestBody,
+      });
+
+      const response = await this.request('/users/ideal-type/', {
+        method: 'POST',
+        body: JSON.stringify(requestBody),
+      });
+
+      console.log('✅ 이상형 프로필 저장 API 응답:', response);
+
+      // 백엔드 응답 형식 확인
+      if (response.success === false || !response.success) {
+        const errorMsg = response.error || response.message || '이상형 프로필 저장에 실패했습니다.';
+        throw new Error(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
+      }
+
+      // 성공 응답 확인
+      if (!response.data && !response.height_min) {
+        throw new Error('이상형 프로필 저장 응답 데이터가 올바르지 않습니다.');
+      }
+
+      return {
+        success: true,
+        data: response.data || response,
+      };
+    } catch (error) {
+      console.error('❌ 이상형 프로필 저장 실패:', error);
+      console.error('   에러 상세:', error);
+      
+      // 에러 메시지 추출 (객체인 경우 처리)
+      let errorMessage = '이상형 프로필 저장에 실패했습니다.';
+      if (error && typeof error === 'object') {
+        if (error.message) {
+          errorMessage = typeof error.message === 'string' ? error.message : JSON.stringify(error.message);
+        } else if (error.error) {
+          errorMessage = typeof error.error === 'string' ? error.error : JSON.stringify(error.error);
+        } else {
+          errorMessage = JSON.stringify(error);
+        }
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      return {
+        success: false,
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
    * 로그인
    * API 3: POST /api/users/auth/login/
    * @param {string} username - 아이디
@@ -462,15 +704,23 @@ class ApiClient {
    */
   async login(username, password) {
     try {
+      // 입력값 검증
+      if (!username || !username.trim()) {
+        throw new Error('아이디 또는 이메일을 입력해주세요.');
+      }
+      if (!password) {
+        throw new Error('비밀번호를 입력해주세요.');
+      }
+
       const requestBody = {
-        username,
-        password,
+        username: username.trim(),
+        password: password,
       };
 
       console.log('🌐 로그인 API 요청:', {
         url: `${this.baseURL}/users/auth/login/`,
         method: 'POST',
-        body: { username, password: '***' }, // 비밀번호는 로그에 표시하지 않음
+        body: { username: requestBody.username, password: '***' }, // 비밀번호는 로그에 표시하지 않음
       });
 
       const response = await this.request('/users/auth/login/', {
@@ -591,6 +841,141 @@ class ApiClient {
         success: false,
         error: error.message,
         message: error.message || '인증번호가 일치하지 않습니다.',
+      };
+    }
+  }
+
+  /**
+   * 비밀번호 재설정 요청
+   * API 16: POST /api/users/auth/password-reset/request/
+   * @param {string} username - 아이디
+   * @param {string} email - 이메일
+   * @returns {Promise<Object>} 발송 결과
+   */
+  async passwordResetRequest(username, email) {
+    try {
+      const requestBody = {
+        username: username,
+        email: email,
+      };
+
+      console.log('🌐 비밀번호 재설정 요청 API 요청:', {
+        url: `${this.baseURL}/users/auth/password-reset/request/`,
+        method: 'POST',
+        body: { username, email: '***' }, // 이메일은 로그에 표시하지 않음
+      });
+
+      const response = await this.request('/users/auth/password-reset/request/', {
+        method: 'POST',
+        body: JSON.stringify(requestBody),
+        requireAuth: false, // 인증이 필요 없는 API
+      });
+
+      console.log('✅ 비밀번호 재설정 요청 API 응답:', response);
+
+      return {
+        success: true,
+        message: response.message || '인증번호가 이메일로 발송되었습니다.',
+        expires_in: response.expires_in || 120,
+        // 개발 환경에서만 인증번호 반환
+        verification_code: response.verification_code,
+      };
+    } catch (error) {
+      console.error('❌ 비밀번호 재설정 요청 실패:', error);
+      return {
+        success: false,
+        error: error.message,
+        message: error.message || '인증번호 발송 중 오류가 발생했습니다.',
+      };
+    }
+  }
+
+  /**
+   * 비밀번호 재설정 인증 확인
+   * API 17: POST /api/users/auth/password-reset/verify/
+   * @param {string} username - 아이디
+   * @param {string} email - 이메일
+   * @param {string} verificationCode - 인증번호
+   * @returns {Promise<Object>} 인증 결과 및 reset_token
+   */
+  async passwordResetVerify(username, email, verificationCode) {
+    try {
+      const requestBody = {
+        username: username,
+        email: email,
+        verification_code: verificationCode,
+      };
+
+      console.log('🌐 비밀번호 재설정 인증 확인 API 요청:', {
+        url: `${this.baseURL}/users/auth/password-reset/verify/`,
+        method: 'POST',
+        body: { username, email: '***', verification_code: '***' },
+      });
+
+      const response = await this.request('/users/auth/password-reset/verify/', {
+        method: 'POST',
+        body: JSON.stringify(requestBody),
+        requireAuth: false, // 인증이 필요 없는 API
+      });
+
+      console.log('✅ 비밀번호 재설정 인증 확인 API 응답:', {
+        success: response.success,
+        hasResetToken: !!response.reset_token,
+      });
+
+      return {
+        success: true,
+        message: response.message || '인증이 완료되었습니다.',
+        reset_token: response.reset_token,
+      };
+    } catch (error) {
+      console.error('❌ 비밀번호 재설정 인증 확인 실패:', error);
+      return {
+        success: false,
+        error: error.message,
+        message: error.message || '인증 확인 중 오류가 발생했습니다.',
+      };
+    }
+  }
+
+  /**
+   * 비밀번호 재설정
+   * API 18: POST /api/users/auth/password-reset/
+   * @param {string} resetToken - 비밀번호 재설정 토큰
+   * @param {string} newPassword - 새 비밀번호
+   * @returns {Promise<Object>} 재설정 결과
+   */
+  async passwordReset(resetToken, newPassword) {
+    try {
+      const requestBody = {
+        reset_token: resetToken,
+        new_password: newPassword,
+      };
+
+      console.log('🌐 비밀번호 재설정 API 요청:', {
+        url: `${this.baseURL}/users/auth/password-reset/`,
+        method: 'POST',
+        body: { reset_token: '***', new_password: '***' },
+      });
+
+      const response = await this.request('/users/auth/password-reset/', {
+        method: 'POST',
+        body: JSON.stringify(requestBody),
+        requireAuth: false, // 인증이 필요 없는 API
+      });
+
+      console.log('✅ 비밀번호 재설정 API 응답:', response);
+
+      return {
+        success: true,
+        message: response.message || '비밀번호가 재설정되었습니다.',
+      };
+    } catch (error) {
+      console.error('❌ 비밀번호 재설정 실패:', error);
+      return {
+        success: false,
+        error: error.message,
+        message: error.message || '비밀번호 재설정 중 오류가 발생했습니다.',
       };
     }
   }

@@ -10,8 +10,8 @@ import {
 import { AuthContext } from '../../context';
 import { COLORS } from '../../constants';
 
-const ProfileInputScreen = ({ navigation }) => {
-  const { updateProfile, userProfile } = useContext(AuthContext);
+const ProfileInputScreen = ({ navigation, route }) => {
+  const { updateProfile, userProfile, idealTypeComplete } = useContext(AuthContext);
   const [age, setAge] = useState('');
   const [gender, setGender] = useState('');
   const [height, setHeight] = useState('');
@@ -19,6 +19,10 @@ const ProfileInputScreen = ({ navigation }) => {
   const [mbti, setMBTI] = useState('');
   const [interests, setInterests] = useState([]);
   const [loading, setLoading] = useState(false);
+  
+  // 프로필이 처음 생성되는지 수정인지 확인
+  // route.params에서 isEdit 플래그를 확인하거나, userProfile이 이미 있는지로 판단
+  const isEditMode = route?.params?.isEdit || (userProfile && userProfile.age && userProfile.gender);
 
   // 기존 프로필 불러오기
   useEffect(() => {
@@ -85,10 +89,19 @@ const ProfileInputScreen = ({ navigation }) => {
       };
 
       await updateProfile(profile);
+      
       Alert.alert('성공', '프로필이 저장되었습니다', [
         {
           text: '확인',
-          onPress: () => navigation.navigate('IdealTypeInput'),
+          onPress: () => {
+            // 처음 프로필 생성 시: 이상형 입력 화면으로 이동
+            // 프로필 수정 시: 메인 화면으로 이동
+            if (isEditMode) {
+              navigation.navigate('Main');
+            } else {
+              navigation.navigate('IdealTypeInput');
+            }
+          },
         },
       ]);
     } catch (error) {
@@ -101,7 +114,12 @@ const ProfileInputScreen = ({ navigation }) => {
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView 
+      style={styles.scrollView}
+      contentContainerStyle={styles.container}
+      showsVerticalScrollIndicator={true}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.header}>프로필 입력</Text>
       <Text style={styles.subtitle}>나에 대한 정보를 입력해주세요</Text>
 
@@ -166,10 +184,13 @@ const ProfileInputScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
+  scrollView: {
     flex: 1,
-    padding: 20,
     backgroundColor: '#fff',
+  },
+  container: {
+    padding: 20,
+    paddingBottom: 40,
   },
   header: {
     fontSize: 28,
