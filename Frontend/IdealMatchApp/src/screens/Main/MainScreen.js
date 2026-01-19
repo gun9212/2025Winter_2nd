@@ -136,6 +136,13 @@ const MainScreen = ({ navigation }) => {
         setIsLoading(false);
         return;
       }
+      
+      // 매칭 동의가 OFF인 경우 위치 초기화 하지 않음
+      if (!matchingConsent) {
+        console.log('⚠️ 매칭 동의 OFF - 위치 초기화 중단');
+        setIsLoading(false);
+        return;
+      }
 
       console.log('📱 위치 권한 요청 중...');
       const hasPermission = await locationService.requestPermission();
@@ -220,6 +227,12 @@ const MainScreen = ({ navigation }) => {
   };
 
   const searchMatches = async (searchLocation) => {
+    // 매칭 동의가 OFF인 경우 매칭 검색 하지 않음
+    if (!matchingConsent) {
+      console.log('⚠️ 매칭 동의 OFF - 매칭 검색 중단');
+      return;
+    }
+    
     try {
       console.log('🔍 searchMatches 호출됨 (서버 신호 확인)');
       setIsSearching(true);
@@ -313,6 +326,12 @@ const MainScreen = ({ navigation }) => {
     // 로그인하지 않은 경우 위치 업데이트 하지 않음
     if (!isLoggedIn) {
       console.log('⚠️ 로그인하지 않음 - 위치 업데이트 중단');
+      return;
+    }
+    
+    // 매칭 동의가 OFF인 경우 위치 업데이트 하지 않음
+    if (!matchingConsent) {
+      console.log('⚠️ 매칭 동의 OFF - 위치 업데이트 중단');
       return;
     }
     try {
@@ -434,6 +453,7 @@ const MainScreen = ({ navigation }) => {
         setMatchingConsent(newConsentState);
         console.log(`✅ 매칭 동의 ${newConsentState ? '활성화' : '비활성화'} 완료`);
         
+
         // 매칭 동의 상태에 따라 매칭 시작/중지
         if (newConsentState) {
           // 매칭 동의 ON: 매칭 시작
@@ -442,8 +462,9 @@ const MainScreen = ({ navigation }) => {
             initializeLocation();
           }
         } else {
-          // 매칭 동의 OFF: 매칭 중지
-          console.log('⏸️ 매칭 동의 OFF - 매칭 중지');
+          // 매칭 동의 OFF: 매칭 중지 및 위치 추적 중단
+          console.log('⏸️ 매칭 동의 OFF - 매칭 중지 및 위치 추적 중단');
+          // 기존 interval 정리
           if (matchingIntervalRef.current) {
             clearInterval(matchingIntervalRef.current);
             matchingIntervalRef.current = null;
@@ -451,6 +472,11 @@ const MainScreen = ({ navigation }) => {
           if (backgroundIntervalRef.current) {
             clearInterval(backgroundIntervalRef.current);
             backgroundIntervalRef.current = null;
+          }
+          // 위치 감지 중단
+          if (watchId !== null) {
+            locationService.stopWatching(watchId);
+            setWatchId(null);
           }
         }
         
