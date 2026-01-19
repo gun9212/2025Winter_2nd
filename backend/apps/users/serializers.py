@@ -60,7 +60,7 @@ class UserSerializer(serializers.ModelSerializer):
     """사용자 프로필 Serializer"""
     class Meta:
         model = User
-        fields = ['age', 'gender', 'height', 'mbti', 'personality', 'interests']
+        fields = ['age', 'gender', 'height', 'mbti', 'personality', 'interests', 'matching_consent']
         read_only_fields = ['created_at', 'updated_at']
     
     def validate_personality(self, value):

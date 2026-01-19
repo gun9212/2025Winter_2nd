@@ -79,11 +79,34 @@ const MainScreen = ({ navigation }) => {
 
   // 프로필 로드 시 매칭 동의 상태 불러오기
   useEffect(() => {
-    if (userProfile && userProfile.matching_consent !== undefined) {
-      setMatchingConsent(userProfile.matching_consent);
-      console.log('✅ 매칭 동의 상태 불러오기:', userProfile.matching_consent);
-    }
-  }, [userProfile]);
+    const fetchMatchingConsent = async () => {
+      if (!isLoggedIn) return;
+      
+      try {
+        // userProfile에 matching_consent가 있으면 먼저 사용
+        if (userProfile && userProfile.matching_consent !== undefined) {
+          setMatchingConsent(userProfile.matching_consent);
+          console.log('✅ 매칭 동의 상태 프로필에서 불러오기:', userProfile.matching_consent);
+          return;
+        }
+        
+        // 없으면 서버에서 명시적으로 조회
+        console.log('📥 서버에서 매칭 동의 상태 조회 중...');
+        const profileResult = await apiClient.getProfile();
+        if (profileResult.success && profileResult.data) {
+          const consent = profileResult.data.matching_consent ?? false;
+          setMatchingConsent(consent);
+          console.log('✅ 매칭 동의 상태 서버에서 불러오기:', consent);
+        }
+      } catch (error) {
+        console.error('❌ 매칭 동의 상태 조회 실패:', error);
+        // 에러 발생 시 기본값 false 사용
+        setMatchingConsent(false);
+      }
+    };
+
+    fetchMatchingConsent();
+  }, [userProfile, isLoggedIn]);
 
   const initializeLocation = async () => {
     try {
