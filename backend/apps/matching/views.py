@@ -88,13 +88,13 @@ def matchable_count(request):
             'error': 'latitude, longitude, radius는 숫자여야 합니다.'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # 매칭 동의는 무조건 ON으로 가정 (요청사항)
-    # 매칭 동의가 OFF인 경우에도 강제로 ON으로 설정 (useruser는 제외)
-    if not current_user.matching_consent and current_user.user.username != 'useruser':
-        current_user.matching_consent = True
-        current_user.consent_updated_at = timezone.now()
-        current_user.save(update_fields=['matching_consent', 'consent_updated_at'])
-        print(f'🔧 매칭 동의를 자동으로 ON으로 설정: {current_user.user.username}')
+    # 매칭 동의가 OFF인 경우 API 호출 거부
+    if not current_user.matching_consent:
+        return Response({
+            'success': False,
+            'error': '매칭 동의가 OFF 상태입니다. 매칭 가능 인원 수를 조회하려면 매칭 동의를 ON으로 설정해주세요.',
+            'matching_consent_required': True
+        }, status=status.HTTP_403_FORBIDDEN)
     
     # 매칭 가능한 사용자 찾기
     matchable_users = find_matchable_users(
@@ -162,13 +162,13 @@ def match_check(request):
                 'error': '프로필이 없습니다. 먼저 프로필을 생성해주세요.'
             }, status=status.HTTP_404_NOT_FOUND)
     
-    # 매칭 동의는 무조건 ON으로 가정 (요청사항)
-    # 매칭 동의가 OFF인 경우에도 강제로 ON으로 설정 (useruser는 제외)
-    if not current_user.matching_consent and current_user.user.username != 'useruser':
-        current_user.matching_consent = True
-        current_user.consent_updated_at = timezone.now()
-        current_user.save(update_fields=['matching_consent', 'consent_updated_at'])
-        print(f'🔧 매칭 동의를 자동으로 ON으로 설정: {current_user.user.username}')
+    # 매칭 동의가 OFF인 경우 API 호출 거부
+    if not current_user.matching_consent:
+        return Response({
+            'success': False,
+            'error': '매칭 동의가 OFF 상태입니다. 매칭을 확인하려면 매칭 동의를 ON으로 설정해주세요.',
+            'matching_consent_required': True
+        }, status=status.HTTP_403_FORBIDDEN)
     
     # 위치 가져오기 (쿼리 파라미터 우선, 없으면 저장된 위치 사용)
     latitude = request.query_params.get('latitude')

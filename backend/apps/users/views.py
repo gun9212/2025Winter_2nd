@@ -474,6 +474,17 @@ def update_location(request):
                         'error': '프로필이 없습니다. 먼저 프로필을 생성해주세요.'
                     }, status=status.HTTP_404_NOT_FOUND)
             
+            # 매칭 동의가 OFF인 경우 위치 업데이트 거부
+            if not user_profile.matching_consent:
+                print("⚠️ 매칭 동의가 OFF 상태입니다. 위치 업데이트가 거부됩니다.")
+                print(f"   User: {user_profile.user.username}")
+                print("=" * 60)
+                return Response({
+                    'success': False,
+                    'error': '매칭 동의가 OFF 상태입니다. 위치 업데이트를 하려면 매칭 동의를 ON으로 설정해주세요.',
+                    'matching_consent_required': True
+                }, status=status.HTTP_403_FORBIDDEN)
+            
             # useruser는 위치 업데이트 제외
             if user_profile.user.username == 'useruser':
                 print("⚠️ useruser는 위치 업데이트가 제한됩니다.")
