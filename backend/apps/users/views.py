@@ -14,7 +14,11 @@ from decouple import config
 import boto3
 from botocore.exceptions import ClientError
 from .models import UserLocation, User, AuthUser
-from .serializers import UserLocationSerializer, UserSerializer, RegisterSerializer, LoginSerializer, EmailVerificationSerializer, IdealTypeProfileSerializer, MatchingConsentSerializer
+from .serializers import (
+    UserLocationSerializer, UserSerializer, RegisterSerializer, LoginSerializer, 
+    EmailVerificationSerializer, IdealTypeProfileSerializer, MatchingConsentSerializer,
+    PasswordResetRequestSerializer, PasswordResetVerifySerializer, PasswordResetSerializer
+)
 
 
 @api_view(['POST'])
@@ -954,3 +958,334 @@ def update_consent(request):
             'success': False,
             'error': f'매칭 동의 업데이트 중 오류가 발생했습니다: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset_request(request):
+    """
+    비밀번호 재설정 요청 API
+    API 16: POST /api/users/auth/password-reset/request/
+    
+    Request Body:
+    {
+        "username": "user123",
+        "email": "user@example.com"
+    }
+    
+    Response (200 OK):
+    {
+        "success": true,
+        "message": "인증번호가 이메일로 발송되었습니다.",
+        "expires_in": 120
+    }
+    """
+    serializer = PasswordResetRequestSerializer(data=request.data)
+    
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    username = serializer.validated_data['username']
+    email = serializer.validated_data['email']
+    
+    # 사용자 확인 (아이디와 이메일이 일치하는지 확인)
+    try:
+        user = AuthUser.objects.get(username=username, email=email)
+    except AuthUser.DoesNotExist:
+        # 보안상 상세 정보 노출하지 않음
+        return Response({
+            'success': False,
+            'error': '아이디와 이메일이 일치하지 않습니다.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # 인증번호 생성 (6자리 숫자)
+    verification_code = ''.join(random.choices(string.digits, k=6))
+    
+    # Redis에 인증번호 저장 (2분 유효시간)
+    cache_key = f'password_reset_code:email:{email}'
+    cache.set(cache_key, verification_code, timeout=120)  # 120초 = 2분
+    
+    # 이메일 발송
+    try:
+        subject = '[IdealMatch] 비밀번호 재설정 인증번호를 확인해주세요'
+        message = f'''
+안녕하세요! IdealMatch입니다. 👋
+
+비밀번호 재설정을 위해 아래 인증번호를 입력해주세요.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   인증번호: {verification_code}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⏰ 유효시간: 2분
+이 인증번호는 2분 후 만료됩니다.
+
+🔒 보안 안내
+• 이 인증번호는 타인에게 공유하지 마세요.
+• IdealMatch는 절대 인증번호를 요청하지 않습니다.
+• 본인이 요청하지 않은 경우 이 이메일을 무시해주세요.
+
+문의사항이 있으시면 언제든지 연락주세요.
+IdealMatch와 함께 특별한 만남을 시작하세요! 💕
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+IdealMatch 팀
+이메일: support@idealmatch.com
+        '''.strip()
+        
+        # 이메일 발송 방식 결정
+        use_aws_ses = config('USE_AWS_SES', default=False, cast=bool)
+        
+        if settings.DEBUG and not use_aws_ses:
+            # 개발 환경: 콘솔에 출력 (기본값)
+            print("=" * 60)
+            print("📧 비밀번호 재설정 인증번호 발송 (개발 모드)")
+            print(f"   이메일: {email}")
+            print(f"   인증번호: {verification_code}")
+            print("   유효시간: 2분")
+            print("=" * 60)
+        elif use_aws_ses:
+            # AWS SES 사용 (프로덕션 환경)
+            try:
+                ses_config = {
+                    'region_name': config('AWS_SES_REGION', default='ap-northeast-2'),
+                }
+                
+                aws_access_key = config('AWS_ACCESS_KEY_ID', default='')
+                aws_secret_key = config('AWS_SECRET_ACCESS_KEY', default='')
+                
+                if aws_access_key and aws_secret_key:
+                    ses_config['aws_access_key_id'] = aws_access_key
+                    ses_config['aws_secret_access_key'] = aws_secret_key
+                
+                ses_client = boto3.client('ses', **ses_config)
+                
+                response = ses_client.send_email(
+                    Source=settings.DEFAULT_FROM_EMAIL,
+                    Destination={'ToAddresses': [email]},
+                    Message={
+                        'Subject': {'Data': subject, 'Charset': 'UTF-8'},
+                        'Body': {'Text': {'Data': message, 'Charset': 'UTF-8'}}
+                    }
+                )
+                
+                if settings.DEBUG:
+                    print(f"✅ AWS SES로 비밀번호 재설정 인증번호 발송 완료: {email}")
+                    print(f"   MessageId: {response.get('MessageId')}")
+                else:
+                    print(f"✅ 비밀번호 재설정 인증번호 발송 완료: {email}")
+                    
+            except ClientError as e:
+                error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+                error_message = e.response.get('Error', {}).get('Message', str(e))
+                
+                print(f"❌ AWS SES 이메일 발송 실패: {error_code} - {error_message}")
+                
+                if settings.DEBUG:
+                    print("=" * 60)
+                    print("📧 비밀번호 재설정 인증번호 (SES 실패, 콘솔 출력)")
+                    print(f"   이메일: {email}")
+                    print(f"   인증번호: {verification_code}")
+                    print("=" * 60)
+                    
+                return Response({
+                    'success': False,
+                    'error': '이메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요.'
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            # 일반 SMTP 사용
+            send_mail(
+                subject,
+                message,
+                settings.DEFAULT_FROM_EMAIL,
+                [email],
+                fail_silently=False,
+            )
+            
+            if settings.DEBUG:
+                print(f"✅ SMTP로 비밀번호 재설정 인증번호 발송 완료: {email}")
+        
+        return Response({
+            'success': True,
+            'message': '인증번호가 이메일로 발송되었습니다.',
+            'expires_in': 120,
+            **({'verification_code': verification_code} if settings.DEBUG else {})
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        print(f"❌ 비밀번호 재설정 인증번호 발송 오류: {str(e)}")
+        return Response({
+            'success': False,
+            'error': '이메일 발송 중 오류가 발생했습니다.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset_verify(request):
+    """
+    비밀번호 재설정 인증 확인 API
+    API 17: POST /api/users/auth/password-reset/verify/
+    
+    Request Body:
+    {
+        "username": "user123",
+        "email": "user@example.com",
+        "verification_code": "123456"
+    }
+    
+    Response (200 OK):
+    {
+        "success": true,
+        "message": "인증이 완료되었습니다.",
+        "reset_token": "eyJ0eXAiOiJKV1QiLCJhbGc..."  // 10-30분 유효
+    }
+    """
+    serializer = PasswordResetVerifySerializer(data=request.data)
+    
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    username = serializer.validated_data['username']
+    email = serializer.validated_data['email']
+    verification_code = serializer.validated_data['verification_code']
+    
+    # 사용자 확인
+    try:
+        user = AuthUser.objects.get(username=username, email=email)
+    except AuthUser.DoesNotExist:
+        return Response({
+            'success': False,
+            'error': '아이디와 이메일이 일치하지 않습니다.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # 인증번호 확인
+    cache_key = f'password_reset_code:email:{email}'
+    stored_code = cache.get(cache_key)
+    
+    if not stored_code:
+        return Response({
+            'success': False,
+            'error': '인증번호가 만료되었거나 존재하지 않습니다. 다시 발송해주세요.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if stored_code != verification_code:
+        return Response({
+            'success': False,
+            'error': '인증번호가 일치하지 않습니다.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    # 인증번호 삭제 (일회용)
+    cache.delete(cache_key)
+    
+    # 비밀번호 재설정 토큰 생성 (JWT Access Token 사용)
+    # 유효시간: 1분 (60초) - 가이드에 따라 짧게 설정
+    from rest_framework_simplejwt.tokens import AccessToken
+    from datetime import timedelta
+    from rest_framework_simplejwt.settings import api_settings
+    
+    # 원래 설정 저장
+    original_lifetime = api_settings.ACCESS_TOKEN_LIFETIME
+    
+    # 임시로 1분으로 설정
+    api_settings.ACCESS_TOKEN_LIFETIME = timedelta(minutes=1)
+    
+    # 커스텀 만료 시간(1분)을 가진 Access Token 생성
+    reset_token = str(AccessToken.for_user(user))
+    
+    # 원래 설정 복원
+    api_settings.ACCESS_TOKEN_LIFETIME = original_lifetime
+    
+    # Redis에 reset_token 저장 (1분 유효시간)
+    reset_token_key = f'password_reset_token:email:{email}'
+    cache.set(reset_token_key, reset_token, timeout=60)  # 1분 = 60초
+    
+    return Response({
+        'success': True,
+        'message': '인증이 완료되었습니다.',
+        'reset_token': reset_token
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def password_reset(request):
+    """
+    비밀번호 재설정 API
+    API 18: POST /api/users/auth/password-reset/
+    
+    Request Body:
+    {
+        "reset_token": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+        "new_password": "newpassword123"
+    }
+    
+    Response (200 OK):
+    {
+        "success": true,
+        "message": "비밀번호가 재설정되었습니다."
+    }
+    """
+    serializer = PasswordResetSerializer(data=request.data)
+    
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    reset_token = serializer.validated_data['reset_token']
+    new_password = serializer.validated_data['new_password']
+    
+    # reset_token으로 사용자 찾기
+    # reset_token은 JWT Access Token이므로 디코딩하여 사용자 ID 추출
+    try:
+        from rest_framework_simplejwt.tokens import UntypedToken
+        from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+        
+        # JWT 토큰 검증
+        UntypedToken(reset_token)
+        
+        # 토큰에서 사용자 ID 추출
+        from rest_framework_simplejwt.tokens import AccessToken
+        access_token = AccessToken(reset_token)
+        user_id = access_token['user_id']
+        
+        # 사용자 확인
+        try:
+            user = AuthUser.objects.get(id=user_id)
+        except AuthUser.DoesNotExist:
+            return Response({
+                'success': False,
+                'error': '유효하지 않은 토큰입니다.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Redis에서 reset_token 확인 (추가 검증)
+        reset_token_key = f'password_reset_token:email:{user.email}'
+        stored_token = cache.get(reset_token_key)
+        
+        if not stored_token or stored_token != reset_token:
+            return Response({
+                'success': False,
+                'error': '토큰이 만료되었거나 유효하지 않습니다.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+    except (InvalidToken, TokenError) as e:
+        return Response({
+            'success': False,
+            'error': '유효하지 않은 토큰입니다.'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': '토큰 검증 중 오류가 발생했습니다.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    # 비밀번호 변경
+    user.set_password(new_password)
+    user.save()
+    
+    # reset_token 삭제 (일회용)
+    reset_token_key = f'password_reset_token:email:{user.email}'
+    cache.delete(reset_token_key)
+    
+    return Response({
+        'success': True,
+        'message': '비밀번호가 재설정되었습니다.'
+    }, status=status.HTTP_200_OK)
