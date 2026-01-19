@@ -363,6 +363,7 @@ export const AuthProvider = ({ children }) => {
         maxHeight: responseData.height_max,
         minAge: responseData.age_min,
         maxAge: responseData.age_max,
+        preferred_gender: responseData.preferred_gender || 'A',
         preferredMBTI: responseData.preferred_mbti || [],
         preferredPersonalities: responseData.preferred_personality || [],
         preferredInterests: responseData.preferred_interests || [],

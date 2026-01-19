@@ -64,19 +64,7 @@ class Notification(models.Model):
         Match,
         on_delete=models.CASCADE,
         related_name='notifications',
-        null=True,
-        blank=True,
         verbose_name='매칭'
-    )
-    
-    # FCM 토큰 (API 15용)
-    fcm_token = models.CharField(max_length=255, null=True, blank=True, verbose_name='FCM 토큰')
-    device_type = models.CharField(
-        max_length=10,
-        choices=[('ios', 'iOS'), ('android', 'Android')],
-        null=True,
-        blank=True,
-        verbose_name='디바이스 타입'
     )
     
     # boundary 추적
@@ -84,22 +72,15 @@ class Notification(models.Model):
     boundary_exited_at = models.DateTimeField(null=True, blank=True, verbose_name='boundary 이탈 시간')
     is_active = models.BooleanField(default=False, verbose_name='알림 활성화 여부')
     
-    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True, verbose_name='생성 시간')
-    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True, verbose_name='업데이트 시간')
-    
     class Meta:
         db_table = 'notifications'
         verbose_name = '알림'
         verbose_name_plural = '알림들'
-        # unique_together는 match가 None일 수 있으므로 제거
-        # unique_together = [['user', 'match']]
+        unique_together = [['user', 'match']]
         indexes = [
             models.Index(fields=['user', 'is_active']),
-            models.Index(fields=['user', 'fcm_token']),
+            models.Index(fields=['user', 'match']),
         ]
     
     def __str__(self):
-        if self.match:
-            return f"{self.user.user.username}의 알림 - {self.match}"
-        else:
-            return f"{self.user.user.username}의 알림 (FCM 토큰 등록)"
+        return f"{self.user.user.username}의 알림 - {self.match}"

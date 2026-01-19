@@ -249,6 +249,7 @@ async function apiCall(url, options = {}) {
   "height_max": 180,
   "age_min": 20,
   "age_max": 30,
+  "preferred_gender": "F",  // M(남성), F(여성), A(모두), 기본값: A
   "preferred_mbti": ["ENFP", "ENTP"],  // 최소 1개 이상 필수
   "preferred_personality": ["활발한", "유머러스한"],  // 최소 1개 이상 필수
   "preferred_interests": ["영화", "음악"],  // 최소 1개 이상 필수
@@ -269,6 +270,7 @@ async function apiCall(url, options = {}) {
   "height_max": 180,
   "age_min": 20,
   "age_max": 30,
+  "preferred_gender": "F",  // M(남성), F(여성), A(모두), 기본값: A
   "preferred_mbti": ["ENFP", "ENTP"],  // 최소 1개 이상 필수
   "preferred_personality": ["활발한", "유머러스한"],  // 최소 1개 이상 필수
   "preferred_interests": ["영화", "음악"],  // 최소 1개 이상 필수
@@ -283,6 +285,7 @@ async function apiCall(url, options = {}) {
   "height_max": 180,
   "age_min": 20,
   "age_max": 30,
+  "preferred_gender": "F",
   "preferred_mbti": ["ENFP", "ENTP"],
   "preferred_personality": ["활발한", "유머러스한"],
   "preferred_interests": ["영화", "음악"],

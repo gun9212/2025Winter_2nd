@@ -636,6 +636,7 @@ class ApiClient {
         height_max: idealTypeData.maxHeight,
         age_min: idealTypeData.minAge,
         age_max: idealTypeData.maxAge,
+        preferred_gender: idealTypeData.preferred_gender || 'A',
         preferred_mbti: idealTypeData.preferredMBTI || [], // MBTI는 선택사항이지만 빈 배열로 전송
         preferred_personality: idealTypeData.preferredPersonalities || [],
         preferred_interests: idealTypeData.preferredInterests || [],

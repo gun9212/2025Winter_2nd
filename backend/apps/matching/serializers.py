@@ -38,7 +38,7 @@ class MatchSerializer(serializers.ModelSerializer):
 class MatchableCountSerializer(serializers.Serializer):
     """
     매칭 가능 인원 수 Serializer
-    API 12: GET /api/matching/matchable-count/
+    API 12: GET /api/matches/matchable-count/
     """
     matchable_count = serializers.IntegerField(help_text='매칭 가능한 인원 수')
     last_count_updated_at = serializers.DateTimeField(
@@ -55,7 +55,7 @@ class MatchableCountSerializer(serializers.Serializer):
 class MatchCheckSerializer(serializers.Serializer):
     """
     매칭 체크 Serializer (포그라운드)
-    API 13: GET /api/matching/check/
+    API 13: GET /api/matches/check/
     """
     has_new_match = serializers.BooleanField(help_text='새로운 매칭 발생 여부')
     new_matches_count = serializers.IntegerField(
@@ -84,7 +84,7 @@ class NotificationSerializer(serializers.ModelSerializer):
 class NotificationRegisterSerializer(serializers.Serializer):
     """
     백그라운드 알림 등록 Serializer
-    API 15: POST /api/matching/notifications/register/
+    API 19: POST /api/notifications/register/
     """
     fcm_token = serializers.CharField(
         required=True, 
