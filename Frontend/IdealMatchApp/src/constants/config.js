@@ -37,7 +37,7 @@ export const MATCHING_INTERVAL_MS = 10000; // 10초마다 매칭 검색
 
 // 테스트 위치 설정 (개발 모드에서 사용)
 // USE_MOCK_LOCATION을 true로 설정하면 실제 GPS 대신 테스트 위치 사용
-export const USE_MOCK_LOCATION = __DEV__ && true; // 개발 모드에서만, 기본값은 false
+export const USE_MOCK_LOCATION = __DEV__ && false; // 실제 GPS 사용 (false), 테스트 위치 사용 (true)
 
 // 테스트 위치 목록
 export const TEST_LOCATIONS = {
