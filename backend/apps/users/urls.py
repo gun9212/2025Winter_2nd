@@ -18,7 +18,8 @@ urlpatterns = [
     path('auth/password-reset/', views.password_reset, name='password_reset'),  # API 18
     
     # 위치 관련 API
-    path('location/update/', views.update_location, name='update_location'),
+    path('location/', views.get_location, name='get_location'),  # GET: 현재 위치 조회
+    path('location/update/', views.update_location, name='update_location'),  # POST: 위치 업데이트
     
     # 프로필 관련 API
     path('profile/', views.profile_view, name='profile_view'),  # GET, POST, PUT 모두 처리

@@ -36,6 +36,7 @@ const MainScreen = ({ navigation }) => {
   const hasNotifiedRef = useRef(false);
   const appState = useRef(AppState.currentState);
   const backgroundIntervalRef = useRef(null);
+  const isInitializingRef = useRef(false);
 
   useEffect(() => {
     // 로그인하지 않은 경우 위치 업데이트 하지 않음
@@ -55,10 +56,13 @@ const MainScreen = ({ navigation }) => {
       }
       if (matchingIntervalRef.current) {
         clearInterval(matchingIntervalRef.current);
+        matchingIntervalRef.current = null;
       }
       if (backgroundIntervalRef.current) {
         clearInterval(backgroundIntervalRef.current);
+        backgroundIntervalRef.current = null;
       }
+      isInitializingRef.current = false;
       subscription?.remove();
     };
   }, [isLoggedIn]);
@@ -83,6 +87,13 @@ const MainScreen = ({ navigation }) => {
 
   const initializeLocation = async () => {
     try {
+      // 이미 초기화 중이거나 완료된 경우 중복 실행 방지
+      if (isInitializingRef.current || matchingIntervalRef.current !== null) {
+        console.log('⚠️ 이미 매칭이 초기화되어 있습니다.');
+        return;
+      }
+
+      isInitializingRef.current = true;
       setIsLoading(true);
       setLocationError(null);
 
@@ -123,22 +134,37 @@ const MainScreen = ({ navigation }) => {
       await sendLocationToServer(currentLocation);
       await searchMatches(currentLocation);
 
-      console.log('🎯 위치 변경 감지 시작...');
-      const id = locationService.watchLocation(async (newLocation) => {
-        console.log('📍 위치 업데이트됨:', newLocation);
-        setLocation(newLocation);
-        // 위치가 변경될 때마다 서버에 전송
-        await sendLocationToServer(newLocation);
-        searchMatches(newLocation);
-      });
-      setWatchId(id);
-      console.log('✅ 위치 감지 시작됨 (watchId:', id, ')');
+      // Mock Location 모드에서는 watchLocation을 사용하지 않음 (5초마다 불필요한 콜백 방지)
+      // 실제 GPS 모드에서만 watchLocation 사용
+      const USE_MOCK_LOCATION = require('../../constants/config').USE_MOCK_LOCATION;
+      if (!USE_MOCK_LOCATION) {
+        console.log('🎯 위치 변경 감지 시작...');
+        const id = locationService.watchLocation(async (newLocation) => {
+          console.log('📍 위치 업데이트됨:', newLocation);
+          setLocation(newLocation);
+          // 위치가 변경될 때마다 서버에만 전송 (매칭 검색은 setInterval에서만 수행)
+          await sendLocationToServer(newLocation);
+          // searchMatches는 호출하지 않음 (중복 방지)
+        });
+        setWatchId(id);
+        console.log('✅ 위치 감지 시작됨 (watchId:', id, ')');
+      } else {
+        console.log('🧪 Mock Location 모드: watchLocation 비활성화 (setInterval만 사용)');
+      }
+
+      // 기존 interval이 있으면 제거
+      if (matchingIntervalRef.current) {
+        console.log('🔄 기존 매칭 interval 제거');
+        clearInterval(matchingIntervalRef.current);
+        matchingIntervalRef.current = null;
+      }
 
       const interval = FOREGROUND_INTERVAL;
       console.log(`✅ 주기적 매칭 시작 (${interval / 1000}초마다)`);
+      console.log(`📊 Interval ID: ${matchingIntervalRef.current}`);
       
       matchingIntervalRef.current = setInterval(async () => {
-        console.log('⏰ 주기적 매칭 검색...');
+        console.log('⏰ 주기적 매칭 검색... (setInterval에서 호출)');
         try {
           const latestLocation = await locationService.getCurrentLocation();
           // 주기적 검색 시에도 서버에 위치 전송
@@ -148,20 +174,32 @@ const MainScreen = ({ navigation }) => {
           console.error('주기적 매칭 검색 오류:', error);
         }
       }, interval);
+      
+      console.log(`📊 새 Interval ID: ${matchingIntervalRef.current}`);
 
       setIsLoading(false);
+      isInitializingRef.current = false;
     } catch (error) {
       console.error('❌ 위치 초기화 오류:', error);
       setLocationError(error.message || '위치를 가져올 수 없습니다.');
       Alert.alert('위치 오류', '위치 정보를 가져올 수 없습니다. 다시 시도해주세요.');
       setIsLoading(false);
+      isInitializingRef.current = false;
     }
   };
 
   const searchMatches = async (searchLocation) => {
     try {
+      console.log('🔍 searchMatches 호출됨 (Django API 사용)');
       setIsSearching(true);
-      const result = await mockApiClient.findMatches(searchLocation);
+      
+      // 실제 Django API 호출
+      const result = await apiClient.checkMatches(
+        searchLocation.latitude,
+        searchLocation.longitude,
+        1.0 // 1000m (1km) 반경으로 증가
+      );
+      
       setMatchResult(result);
 
       if (result.matched && result.matches.length > 0 && !hasNotifiedRef.current) {

@@ -15,16 +15,16 @@
 - **API 8**: 이상형 프로필 조회 (`GET /api/users/ideal-type/`)
 - **API 9**: 이상형 프로필 생성/수정 (`POST/PUT /api/users/ideal-type/`)
 - **API 10**: 위치 업데이트 (`POST /api/users/location/update/`)
-
-### ⚠️ 미구현 API
-- **API 11**: 현재 위치 조회 (`GET /api/users/location/`)
-- **API 12**: 매칭 가능 인원 수 조회 (`GET /api/matches/matchable-count/`)
-- **API 13**: 매칭 체크 (포그라운드) (`GET /api/matches/check/`)
+- **API 12**: 매칭 가능 인원 수 조회 (`GET /api/matching/matchable-count/`)
+- **API 13**: 매칭 체크 (포그라운드) (`GET /api/matching/check/`)
 - **API 14**: 매칭 동의 업데이트 (`POST /api/users/consent/`)
-- **API 15**: 백그라운드 알림 등록 (`POST /api/notifications/register/`)
+- **API 15**: 백그라운드 알림 등록 (`POST /api/matching/notifications/register/`)
 - **API 16**: 비밀번호 재설정 요청 (`POST /api/users/auth/password-reset/request/`)
 - **API 17**: 비밀번호 재설정 인증 확인 (`POST /api/users/auth/password-reset/verify/`)
 - **API 18**: 비밀번호 재설정 (`POST /api/users/auth/password-reset/`)
+
+### ⚠️ 미구현 API
+- **API 11**: 현재 위치 조회 (`GET /api/users/location/`)
 
 ---
 
@@ -138,7 +138,7 @@
 
 ---
 
-### API 16: 비밀번호 재설정 요청 (`POST /api/users/auth/password-reset/request/`) ⚠️ 미구현
+### API 16: 비밀번호 재설정 요청 (`POST /api/users/auth/password-reset/request/`) ✅ 구현 완료
 
 **기능:**
 - 아이디와 이메일을 받아 사용자 확인
@@ -158,7 +158,7 @@
 
 ---
 
-### API 17: 비밀번호 재설정 인증 확인 (`POST /api/users/auth/password-reset/verify/`) ⚠️ 미구현
+### API 17: 비밀번호 재설정 인증 확인 (`POST /api/users/auth/password-reset/verify/`) ✅ 구현 완료
 
 **기능:**
 - 비밀번호 재설정용 인증번호를 검증합니다
@@ -185,7 +185,7 @@
 
 ---
 
-### API 18: 비밀번호 재설정 (`POST /api/users/auth/password-reset/`) ⚠️ 미구현
+### API 18: 비밀번호 재설정 (`POST /api/users/auth/password-reset/`) ✅ 구현 완료
 
 **기능:**
 - 비밀번호 재설정 토큰과 새 비밀번호를 받아 비밀번호를 변경합니다
@@ -343,29 +343,62 @@
 
 ---
 
-### API 11: 현재 위치 조회 (`GET /api/users/location/`) ⚠️ 미구현
+### API 11: 현재 위치 조회 (`GET /api/users/location/`) ✅ 구현 완료
 
 **기능:**
 - 서버에 저장된 사용자의 최신 위치 정보를 가져옵니다
 - 마지막으로 업데이트된 위치 정보를 반환합니다
+- 위치 정보가 없으면 404 에러 반환
 
 **필요한 때:**
 - ✅ 위치 정보가 필요한 다른 기능에서 사용하기 위해
 - ✅ 앱 시작 시 마지막 위치 정보를 확인하기 위해
 - ✅ 위치 기반 기능에서 서버에 저장된 위치를 참조해야 할 때
+- ✅ 위치 업데이트 전에 기존 위치를 확인하기 위해
+
+**Request:**
+- **Method**: `GET`
+- **URL**: `/api/users/location/`
+- **Headers**: 
+  - `Authorization: Bearer <access_token>` (프로덕션 환경)
+  - 개발 환경에서는 인증 없이 `?user_id=1` query parameter로 테스트 가능
+
+**Response (성공):**
+```json
+{
+  "success": true,
+  "data": {
+    "latitude": "37.566500",
+    "longitude": "126.978000"
+  },
+  "updated_at": "2026-01-19T22:00:00Z"
+}
+```
+
+**Response (위치 정보 없음):**
+```json
+{
+  "success": false,
+  "error": "위치 정보가 없습니다. 먼저 위치를 업데이트해주세요."
+}
+```
 
 **예시 시나리오:**
 ```
-앱: "앱 시작 시 마지막 위치 확인"
-앱: API 11 호출 → 서버에 저장된 최신 위치 정보 확인
-앱: "위치 정보를 기반으로 다른 기능 실행"
+시나리오 1: 앱 시작 시 마지막 위치 확인
+앱: "앱 시작 → API 11 호출 → 서버에 저장된 최신 위치 정보 확인"
+서버: "위치 정보 반환 → 앱이 마지막 위치를 기반으로 기능 실행"
+
+시나리오 2: 위치 기반 기능에서 사용
+앱: "매칭 화면 진입 → API 11 호출 → 저장된 위치로 매칭 검색 시작"
+서버: "위치 정보 반환 → 앱이 해당 위치로 매칭 API 호출"
 ```
 
 ---
 
 ## 🎯 5단계: 매칭 시스템
 
-### API 12: 매칭 가능 인원 수 조회 (`GET /api/matches/matchable-count/`) ⚠️ 미구현
+### API 12: 매칭 가능 인원 수 조회 (`GET /api/matching/matchable-count/`) ✅ 구현 완료
 
 **기능:**
 - boundary(반경) 내에서 이상형 조건에 부합하는 사용자 수를 조회합니다
@@ -390,7 +423,7 @@
 
 ---
 
-### API 13: 매칭 체크 (포그라운드) (`GET /api/matches/check/`) ⚠️ 미구현
+### API 13: 매칭 체크 (포그라운드) (`GET /api/matching/check/`) ✅ 구현 완료
 
 **기능:**
 - 앱이 포그라운드에서 실행 중일 때 새로운 매칭이 발생했는지 확인합니다
@@ -398,9 +431,13 @@
 - **주의**: 포그라운드에서는 알림을 표시하지 않습니다 (화면이 켜져있으므로)
 - **백그라운드 알림**: 앱이 꺼져있거나 백그라운드에 있을 때는 서버가 자동으로 푸시 알림을 보냅니다
 - **중요**: 매칭 동의(API 14)가 ON 상태일 때만 호출됩니다
+- **Query Parameters (선택사항):**
+  - `latitude` (float): 현재 위치의 위도 (없으면 저장된 위치 사용)
+  - `longitude` (float): 현재 위치의 경도 (없으면 저장된 위치 사용)
+  - `radius` (float): 반경 (km 단위, 기본값: 0.5 = 500m)
 
 **필요한 때:**
-- ✅ 앱이 포그라운드에서 실행 중일 때 10초마다 자동으로 호출 (매칭 동의 ON 상태일 때만)
+- ✅ 앱이 포그라운드에서 실행 중일 때 30초마다 자동으로 호출 (매칭 동의 ON 상태일 때만)
 - ✅ 새로운 매칭이 발생했는지 실시간으로 확인하기 위해 (알림 표시 없이)
 - ✅ 매칭 동의를 OFF에서 ON으로 변경했을 때 (매칭 체크 재개)
 
@@ -421,7 +458,7 @@
 
 ## ⚙️ 6단계: 서비스 설정
 
-### API 14: 매칭 동의 업데이트 (`POST /api/users/consent/`) ( ON/OFF 기능 ) ⚠️ 미구현
+### API 14: 매칭 동의 업데이트 (`POST /api/users/consent/`) ( ON/OFF 기능 ) ✅ 구현 완료
 
 **기능:**
 - 사용자가 매칭에 동의했는지 여부를 설정합니다
@@ -485,7 +522,11 @@
 
 ## 🔔 7단계: 백그라운드 알림 시스템
 
-### API 15: 백그라운드 알림 등록 (`POST /api/notifications/register/`) ⚠️ 미구현
+### API 15: 백그라운드 알림 등록 (`POST /api/matching/notifications/register/`) ✅ 구현 완료
+
+**Request Body:**
+- `fcm_token` (string, 필수): Firebase Cloud Messaging 토큰
+- `device_type` (string, 필수): 디바이스 타입 ('ios' 또는 'android')
 
 **기능:**
 - 앱이 백그라운드에 있거나 화면이 꺼져있을 때 매칭 알림을 받기 위해 푸시 알림 토큰을 등록합니다
@@ -634,7 +675,7 @@ ON → OFF: API 14 호출 → 위치 데이터 수집 중지 → 매칭 감지 �
 | API | 호출 빈도 | 설명 |
 |-----|----------|------|
 | API 10 (위치 업데이트) | 30초마다 | 앱 포그라운드 실행 중 |
-| API 13 (매칭 체크) | 10초마다 | 앱 포그라운드 실행 중 (알림 표시 안 함) |
+| API 13 (매칭 체크) | 30초마다 | 앱 포그라운드 실행 중 (알림 표시 안 함) |
 | API 15 (백그라운드 알림 등록) | 1회 | 로그인 시 또는 푸시 토큰 갱신 시 |
 | API 4 (토큰 갱신) | 필요 시 | Access Token 만료 시 (30분마다) |
 | API 1-3, 6, 9, 14, 16-18 | 사용자 액션 시 | 버튼 클릭, 토글 변경 등 |

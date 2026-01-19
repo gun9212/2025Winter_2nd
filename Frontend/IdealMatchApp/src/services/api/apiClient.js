@@ -440,10 +440,16 @@ class ApiClient {
    */
   async updateLocation(latitude, longitude, userId = null) {
     try {
+      // DecimalField 제약: max_digits=9, decimal_places=6
+      // 총 9자리, 소수점 이하 6자리로 제한
+      // 예: 127.027600 (정수 3자리 + 소수 6자리 = 9자리)
+      const formattedLat = parseFloat(latitude.toFixed(6));
+      const formattedLon = parseFloat(longitude.toFixed(6));
+      
       // 디버그 모드이고 user_id가 없으면 테스트 user_id 사용
       const requestBody = {
-        latitude,
-        longitude,
+        latitude: formattedLat,
+        longitude: formattedLon,
       };
       
       // 디버그 모드에서 인증 토큰이 없으면 user_id 추가
@@ -1029,6 +1035,83 @@ class ApiClient {
         success: false,
         error: error.message,
         message: error.message || '매칭 동의 업데이트 중 오류가 발생했습니다.',
+      };
+    }
+  }
+
+  /**
+   * 매칭 체크 (포그라운드)
+   * API 13: GET /api/matching/check/
+   * @param {number} latitude - 현재 위치 위도
+   * @param {number} longitude - 현재 위치 경도
+   * @param {number} radius - 반경 (km 단위, 기본값 0.5)
+   * @param {number} userId - 테스트용 user_id (디버그 모드)
+   * @returns {Promise<Object>} 매칭 결과
+   */
+  async checkMatches(latitude, longitude, radius = 0.5, userId = null) {
+    try {
+      const params = new URLSearchParams({
+        latitude: latitude.toString(),
+        longitude: longitude.toString(),
+        radius: radius.toString(),
+      });
+
+      // 디버그 모드에서 인증 토큰이 없으면 user_id 추가
+      const token = await StorageService.getAccessToken();
+      const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
+      if (__DEV__ && !token && testUserId) {
+        params.append('user_id', testUserId.toString());
+        console.log('🔧 디버그 모드: user_id 추가', testUserId);
+      }
+
+      console.log('🌐 매칭 체크 API 요청:', {
+        url: `${this.baseURL}/matching/check/?${params.toString()}`,
+        method: 'GET',
+      });
+
+      const response = await this.request(`/matching/check/?${params.toString()}`, {
+        method: 'GET',
+      });
+
+      console.log('✅ 매칭 체크 API 응답:', response);
+
+      // 응답 형식 변환 (백엔드 응답을 프론트엔드 형식으로)
+      // 백엔드 응답: { success: true, data: { has_new_match, latest_match } }
+      const data = response.data || response;
+      
+      // 기존 매칭이 있어도 매칭으로 처리
+      if (data.latest_match) {
+        const match = data.latest_match;
+        return {
+          matched: true,
+          matches: [{
+            user: {
+              id: match.user2?.id || match.user2_id,
+              username: match.user2?.username || 'Unknown',
+              age: match.user2?.age,
+              gender: match.user2?.gender,
+              height: match.user2?.height,
+              mbti: match.user2?.mbti,
+            },
+            distance: (match.matched_criteria?.distance_m || 0) / 1000, // m를 km로 변환
+            matchScore: match.matched_criteria?.match_score || 0,
+          }],
+          timestamp: new Date().toISOString(),
+          isNewMatch: data.has_new_match || false, // 새 매칭 여부
+        };
+      }
+
+      return {
+        matched: false,
+        matches: [],
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error('❌ 매칭 체크 실패:', error);
+      return {
+        matched: false,
+        matches: [],
+        error: error.message,
       };
     }
   }

@@ -73,23 +73,23 @@ export class MockApiClient {
 
     // 매칭 시도 카운터 증가
     this.matchAttemptCount++;
-    console.log(`🔍 매칭 검색 시작... (시도 ${this.matchAttemptCount}/3)`);
+    console.log(`🔍 매칭 검색 시작... (시도 ${this.matchAttemptCount})`);
     console.log(`   위치: (${userLocation.latitude.toFixed(6)}, ${userLocation.longitude.toFixed(6)})`);
 
-    // 🎯 테스트용: 3번째 시도 시 강제 매칭
-    if (this.matchAttemptCount >= 3 && this.mockUsers.length > 0) {
-      console.log('🎉 [테스트 모드] 3번째 시도 - 강제 매칭!');
-      const forcedMatch = this.mockUsers[0]; // 첫 번째 사용자 선택
-      
-      return {
-        matched: true,
-        matches: [{
-          user: forcedMatch,
-          distance: 0.03, // 30m
-          matchScore: 100,
-        }],
-      };
-    }
+    // 🎯 테스트용: 3번째 시도 시 강제 매칭 (비활성화됨)
+    // if (this.matchAttemptCount >= 3 && this.mockUsers.length > 0) {
+    //   console.log('🎉 [테스트 모드] 3번째 시도 - 강제 매칭!');
+    //   const forcedMatch = this.mockUsers[0]; // 첫 번째 사용자 선택
+    //   
+    //   return {
+    //     matched: true,
+    //     matches: [{
+    //       user: forcedMatch,
+    //       distance: 0.03, // 30m
+    //       matchScore: 100,
+    //     }],
+    //   };
+    // }
 
     // 주변 사용자 중 매칭되는 사람 찾기
     const matches = this.mockUsers

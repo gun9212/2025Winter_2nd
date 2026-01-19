@@ -170,16 +170,33 @@ def match_check(request):
         current_user.save(update_fields=['matching_consent', 'consent_updated_at'])
         print(f'🔧 매칭 동의를 자동으로 ON으로 설정: {current_user.user.username}')
     
-    # 현재 위치 가져오기
-    try:
-        user_location = current_user.location
-        latitude = Decimal(str(user_location.latitude))
-        longitude = Decimal(str(user_location.longitude))
-    except (UserLocation.DoesNotExist, AttributeError):
-        return Response({
-            'success': False,
-            'error': '위치 정보가 없습니다. 먼저 위치를 업데이트해주세요.'
-        }, status=status.HTTP_400_BAD_REQUEST)
+    # 위치 가져오기 (쿼리 파라미터 우선, 없으면 저장된 위치 사용)
+    latitude = request.query_params.get('latitude')
+    longitude = request.query_params.get('longitude')
+    
+    if latitude and longitude:
+        # 쿼리 파라미터에서 위치 가져오기
+        try:
+            latitude = Decimal(str(latitude))
+            longitude = Decimal(str(longitude))
+            print(f'📍 쿼리 파라미터에서 위치 사용: ({latitude}, {longitude})')
+        except (ValueError, TypeError):
+            return Response({
+                'success': False,
+                'error': 'latitude와 longitude는 숫자여야 합니다.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        # 저장된 위치 사용
+        try:
+            user_location = current_user.location
+            latitude = Decimal(str(user_location.latitude))
+            longitude = Decimal(str(user_location.longitude))
+            print(f'📍 저장된 위치 사용: ({latitude}, {longitude})')
+        except (UserLocation.DoesNotExist, AttributeError):
+            return Response({
+                'success': False,
+                'error': '위치 정보가 없습니다. 먼저 위치를 업데이트해주세요.'
+            }, status=status.HTTP_400_BAD_REQUEST)
     
     # 반경 (기본값 500m)
     try:
@@ -190,6 +207,13 @@ def match_check(request):
             'error': 'radius는 숫자여야 합니다.'
         }, status=status.HTTP_400_BAD_REQUEST)
     
+    print("=" * 60)
+    print(f'🔍 매칭 검색 시작')
+    print(f'   사용자: {current_user.user.username}')
+    print(f'   위치: ({latitude}, {longitude})')
+    print(f'   반경: {radius}km')
+    print("=" * 60)
+    
     # 매칭 가능한 사용자 찾기
     matchable_users = find_matchable_users(
         current_user,
@@ -198,8 +222,15 @@ def match_check(request):
         radius_km=radius
     )
     
+    print(f'\n📊 매칭 가능한 사용자: {len(matchable_users)}명')
+    for m in matchable_users:
+        print(f'   - {m["user"].user.username} (거리: {m["distance_m"]:.2f}m, 점수: {m["match_score"]})')
+    print("=" * 60)
+    
     # 새로운 매칭 생성 (아직 매칭되지 않은 사용자와)
     new_matches = []
+    existing_matches = []
+    print(f'\n🔍 기존 매칭 확인 중...')
     for matchable in matchable_users:
         candidate_user = matchable['user']
         
@@ -210,7 +241,11 @@ def match_check(request):
         ).first()
         
         if existing_match:
+            print(f'   ⚠️ {candidate_user.user.username}: 이미 매칭됨 (매칭 ID: {existing_match.id})')
+            existing_matches.append(existing_match)
             continue  # 이미 매칭됨
+        
+        print(f'   ✅ {candidate_user.user.username}: 새 매칭 생성 가능')
         
         # 새 매칭 생성
         try:
@@ -232,20 +267,30 @@ def match_check(request):
                     }
                 )
                 new_matches.append(new_match)
+                print(f'   ✅ 새 매칭 생성 완료 (매칭 ID: {new_match.id})')
         except Exception as e:
             # 매칭 생성 실패 (중복 등)는 무시하고 계속
             print(f'⚠️ 매칭 생성 실패: {str(e)}')
             continue
     
-    # 최신 매칭 정보
-    latest_match = new_matches[0] if new_matches else None
+    # 최신 매칭 정보 (새 매칭 우선, 없으면 기존 매칭)
+    latest_match = new_matches[0] if new_matches else (existing_matches[0] if existing_matches else None)
+    
+    if latest_match:
+        match_type = "새 매칭" if latest_match in new_matches else "기존 매칭"
+        print(f'\n📌 최신 매칭: {match_type} (ID: {latest_match.id})')
     
     # Serializer로 변환
+    # 기존 매칭이 있어도 매칭이 있다는 것을 알려줌
+    has_any_match = len(new_matches) > 0 or len(existing_matches) > 0
     serializer = MatchCheckSerializer({
-        'has_new_match': len(new_matches) > 0,
+        'has_new_match': len(new_matches) > 0,  # 새 매칭만 새 매칭으로 표시
         'new_matches_count': len(new_matches),
-        'latest_match': latest_match,
+        'latest_match': latest_match,  # 기존 매칭도 포함
     })
+    
+    print(f'\n✅ 응답: has_new_match={len(new_matches) > 0}, latest_match={"있음" if latest_match else "없음"}')
+    print("=" * 60)
     
     return Response({
         'success': True,

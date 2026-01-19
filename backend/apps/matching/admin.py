@@ -9,6 +9,7 @@ class MatchAdmin(admin.ModelAdmin):
     list_filter = ('matched_at',)
     search_fields = ('user1__user__username', 'user2__user__username')
     raw_id_fields = ('user1', 'user2')
+    readonly_fields = ('matched_at',)  # auto_now_add 필드는 읽기 전용
     
     fieldsets = (
         ('사용자', {
