@@ -14,15 +14,11 @@ from decouple import config
 import boto3
 from botocore.exceptions import ClientError
 from .models import UserLocation, User, AuthUser
-<<<<<<< HEAD
-from .serializers import UserLocationSerializer, UserSerializer, RegisterSerializer, LoginSerializer, EmailVerificationSerializer, IdealTypeProfileSerializer, MatchingConsentSerializer
-=======
 from .serializers import (
     UserLocationSerializer, UserSerializer, RegisterSerializer, LoginSerializer, 
-    EmailVerificationSerializer, IdealTypeProfileSerializer,
+    EmailVerificationSerializer, IdealTypeProfileSerializer, MatchingConsentSerializer,
     PasswordResetRequestSerializer, PasswordResetVerifySerializer, PasswordResetSerializer
 )
->>>>>>> 2bcfaef (Matching API)
 
 
 @api_view(['POST'])
@@ -878,7 +874,6 @@ def check_profile_completeness(request):
 
 
 @api_view(['POST'])
-<<<<<<< HEAD
 @permission_classes([IsAuthenticated if not settings.DEBUG else AllowAny])
 def update_consent(request):
     """
@@ -963,7 +958,8 @@ def update_consent(request):
             'success': False,
             'error': f'매칭 동의 업데이트 중 오류가 발생했습니다: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-=======
+
+@api_view(['POST'])
 @permission_classes([AllowAny])
 def password_reset_request(request):
     """
@@ -1293,4 +1289,3 @@ def password_reset(request):
         'success': True,
         'message': '비밀번호가 재설정되었습니다.'
     }, status=status.HTTP_200_OK)
->>>>>>> 2bcfaef (Matching API)
