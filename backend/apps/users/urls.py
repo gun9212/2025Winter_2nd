@@ -11,6 +11,9 @@ urlpatterns = [
     path('auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),  # API 4: 토큰 갱신
     path('auth/send-verification-code/', views.send_verification_code, name='send_verification_code'),
     path('auth/verify-email/', views.verify_email, name='verify_email'),
+    path('auth/password-reset/request/', views.password_reset_request, name='password_reset_request'),  # API 16
+    path('auth/password-reset/verify/', views.password_reset_verify, name='password_reset_verify'),  # API 17
+    path('auth/password-reset/', views.password_reset, name='password_reset'),  # API 18
     
     # 위치 관련 API
     path('location/update/', views.update_location, name='update_location'),
