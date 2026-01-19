@@ -37,6 +37,8 @@ const MainScreen = ({ navigation }) => {
   const appState = useRef(AppState.currentState);
   const backgroundIntervalRef = useRef(null);
   const isInitializingRef = useRef(false);
+  // 중복 알림 방지를 위한 매칭 ID 추적
+  const notifiedMatchesRef = useRef(new Set());
 
   useEffect(() => {
     // 로그인하지 않은 경우 위치 업데이트 하지 않음
@@ -46,7 +48,13 @@ const MainScreen = ({ navigation }) => {
       return;
     }
 
-    initializeLocation();
+    // 매칭 동의가 ON일 때만 매칭 시작
+    if (matchingConsent) {
+      initializeLocation();
+    } else {
+      console.log('⚠️ 매칭 동의 OFF - 매칭 시작하지 않음');
+      setIsLoading(false);
+    }
 
     const subscription = AppState.addEventListener('change', handleAppStateChange);
 
@@ -65,7 +73,7 @@ const MainScreen = ({ navigation }) => {
       isInitializingRef.current = false;
       subscription?.remove();
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, matchingConsent]);
 
   useEffect(() => {
     const hasProfile = userProfile && userProfile.age && userProfile.gender;
@@ -213,37 +221,56 @@ const MainScreen = ({ navigation }) => {
 
   const searchMatches = async (searchLocation) => {
     try {
-      console.log('🔍 searchMatches 호출됨 (Django API 사용)');
+      console.log('🔍 searchMatches 호출됨 (서버 신호 확인)');
       setIsSearching(true);
       
-      // 실제 Django API 호출
+      // 서버에서 매칭 신호 확인 (실제 Django API 호출)
       const result = await apiClient.checkMatches(
         searchLocation.latitude,
         searchLocation.longitude,
-        1.0 // 1000m (1km) 반경으로 증가
+        1.0 // 1000m (1km) 반경
       );
       
       setMatchResult(result);
 
-      if (result.matched && result.matches.length > 0 && !hasNotifiedRef.current) {
+      // 매칭 발생 시 로컬 알림 표시 (중복 방지)
+      // has_new_match가 true일 때만 알림 표시 (기존 매칭은 제외)
+      if (result.matched && result.matches.length > 0 && result.isNewMatch) {
         const bestMatch = result.matches[0];
-        console.log('🎉 매칭 성공! 주변에서 이상형을 발견했습니다!');
+        // 매칭 ID 생성 (user1_id와 user2_id 조합 또는 match.id)
+        const matchId = bestMatch.id || `${bestMatch.user1_id || bestMatch.user1?.id || 'unknown'}_${bestMatch.user2_id || bestMatch.user2?.id || 'unknown'}`;
         
-        hasNotifiedRef.current = true;
-        setShowHeartbeat(true);
-        hapticService.heartbeat();
-        notificationService.showMatchNotification(bestMatch);
+        // 이미 알림을 보낸 매칭인지 확인
+        if (notifiedMatchesRef.current.has(matchId)) {
+          console.log('ℹ️ 이미 알림을 보낸 매칭:', matchId);
+          return;
+        }
         
-        setTimeout(() => {
-          setShowHeartbeat(false);
-        }, 5000);
+        console.log('🎉 새 매칭 발견! 로컬 알림 표시:', matchId);
+        console.log('📊 매칭 정보:', {
+          id: bestMatch.id,
+          user1_id: bestMatch.user1_id || bestMatch.user1?.id,
+          user2_id: bestMatch.user2_id || bestMatch.user2?.id,
+        });
         
-        setTimeout(() => {
-          console.log('🔄 매칭 상태 리셋 - 다시 매칭을 시도합니다...');
-          mockApiClient.resetMatchCounter();
-          setMatchResult(null);
-          hasNotifiedRef.current = false;
-        }, 10000);
+        // 알림 보낸 매칭 기록
+        notifiedMatchesRef.current.add(matchId);
+        
+        // 로컬 알림 표시 (무료, iOS/Android 모두 동작)
+        await notificationService.showMatchNotification(bestMatch);
+        
+        // 하트 애니메이션 (포그라운드일 때만)
+        if (AppState.currentState === 'active') {
+          setShowHeartbeat(true);
+          hapticService.heartbeat();
+          
+          setTimeout(() => {
+            setShowHeartbeat(false);
+          }, 5000);
+        }
+      } else if (result.matched && result.matches.length > 0 && !result.isNewMatch) {
+        // 기존 매칭이지만 새 매칭이 아닌 경우
+        console.log('ℹ️ 기존 매칭 (알림 표시 안 함)');
       }
     } catch (error) {
       console.error('❌ 매칭 검색 오류:', error);
@@ -269,12 +296,13 @@ const MainScreen = ({ navigation }) => {
         await searchMatches(location);
       }
     } else if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
-      console.log('🔒 백그라운드 전환 - 백그라운드 매칭 시작');
+      console.log('🔒 백그라운드 전환 - 백그라운드 매칭 시작 (서버 신호 확인)');
       
       if (location) {
         await sendLocationToServer(location);
       }
       
+      // 백그라운드에서 주기적으로 서버 신호 확인
       startBackgroundMatching();
     }
 
@@ -315,32 +343,71 @@ const MainScreen = ({ navigation }) => {
   };
 
   const startBackgroundMatching = () => {
+    // 매칭 동의가 OFF면 백그라운드 매칭 중지
+    if (!matchingConsent) {
+      console.log('⚠️ 매칭 동의 OFF - 백그라운드 매칭 중지');
+      return;
+    }
+    
     const interval = DEFAULT_BACKGROUND_INTERVAL;
-    console.log(`🔄 백그라운드 매칭 시작 (${interval / 1000}초 간격)`);
+    console.log(`🔄 백그라운드 매칭 시작 (${interval / 1000}초 간격, 서버 신호 확인)`);
+    
+    // 기존 interval이 있으면 제거
+    if (backgroundIntervalRef.current) {
+      clearInterval(backgroundIntervalRef.current);
+      backgroundIntervalRef.current = null;
+    }
     
     backgroundIntervalRef.current = setInterval(async () => {
       try {
-        console.log('⏰ 백그라운드 매칭 체크...');
+        console.log('⏰ 백그라운드 매칭 체크 (서버 신호 확인)...');
         
+        // 현재 위치 가져오기
         const currentLocation = await locationService.getCurrentLocation();
+        
+        // 위치 서버에 전송
         await sendLocationToServer(currentLocation);
         
-        const result = await mockApiClient.findMatches(currentLocation);
+        // 서버에서 매칭 신호 확인 (실제 Django API 호출)
+        const result = await apiClient.checkMatches(
+          currentLocation.latitude,
+          currentLocation.longitude,
+          1.0
+        );
         
-        if (result.matched && result.matches.length > 0 && !hasNotifiedRef.current) {
-          console.log('🎉 백그라운드 매칭 성공!');
+        // 매칭 발생 시 로컬 알림 표시 (새 매칭만)
+        // has_new_match가 true일 때만 알림 표시 (기존 매칭은 제외)
+        if (result.matched && result.matches.length > 0 && result.isNewMatch) {
+          const bestMatch = result.matches[0];
+          const matchId = bestMatch.id || `${bestMatch.user1_id || bestMatch.user1?.id || 'unknown'}_${bestMatch.user2_id || bestMatch.user2?.id || 'unknown'}`;
           
-          hasNotifiedRef.current = true;
-          await notificationService.showMatchNotification();
+          // 이미 알림을 보낸 매칭인지 확인
+          if (notifiedMatchesRef.current.has(matchId)) {
+            console.log('ℹ️ 백그라운드: 이미 알림을 보낸 매칭:', matchId);
+            return;
+          }
+          
+          console.log('💝 백그라운드에서 새 매칭 발견! 로컬 알림 표시:', matchId);
+          console.log('📊 매칭 정보:', {
+            id: bestMatch.id,
+            user1_id: bestMatch.user1_id || bestMatch.user1?.id,
+            user2_id: bestMatch.user2_id || bestMatch.user2?.id,
+          });
+          
+          // 알림 보낸 매칭 기록
+          notifiedMatchesRef.current.add(matchId);
+          
+          // 로컬 알림 표시 (백그라운드에서도 동작)
+          await notificationService.showMatchNotification(bestMatch);
+          
+          // 햅틱 피드백 (백그라운드에서도 가능)
           hapticService.heartbeat();
-          
-          setTimeout(() => {
-            hasNotifiedRef.current = false;
-            mockApiClient.resetMatchCounter();
-          }, 10000);
+        } else if (result.matched && result.matches.length > 0 && !result.isNewMatch) {
+          // 기존 매칭이지만 새 매칭이 아닌 경우
+          console.log('ℹ️ 백그라운드: 기존 매칭 (알림 표시 안 함)');
         }
       } catch (error) {
-        console.error('❌ 백그라운드 매칭 오류:', error);
+        console.error('❌ 백그라운드 매칭 체크 오류:', error);
       }
     }, interval);
   };
@@ -366,6 +433,26 @@ const MainScreen = ({ navigation }) => {
         // 성공 시 state 업데이트
         setMatchingConsent(newConsentState);
         console.log(`✅ 매칭 동의 ${newConsentState ? '활성화' : '비활성화'} 완료`);
+        
+        // 매칭 동의 상태에 따라 매칭 시작/중지
+        if (newConsentState) {
+          // 매칭 동의 ON: 매칭 시작
+          console.log('🚀 매칭 동의 ON - 매칭 시작');
+          if (location) {
+            initializeLocation();
+          }
+        } else {
+          // 매칭 동의 OFF: 매칭 중지
+          console.log('⏸️ 매칭 동의 OFF - 매칭 중지');
+          if (matchingIntervalRef.current) {
+            clearInterval(matchingIntervalRef.current);
+            matchingIntervalRef.current = null;
+          }
+          if (backgroundIntervalRef.current) {
+            clearInterval(backgroundIntervalRef.current);
+            backgroundIntervalRef.current = null;
+          }
+        }
         
         // 햅틱 피드백
         hapticService.heartbeat();

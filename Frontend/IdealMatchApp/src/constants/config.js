@@ -27,10 +27,8 @@ export const CONFIG = {
         : 'http://10.0.2.2:8000/api')  // Android 에뮬레이터
     : 'https://your-production-api.com/api',  // 프로덕션
   // 테스트용 user_id (디버그 모드에서 사용)
-  //TEST_USER_ID: 1, // testuser의 ID
-  // 멀티 계정 테스트를 위해 기본값은 null로 둡니다.
-  // 필요 시에만 직접 숫자 ID를 넣어 특정 계정으로 강제 테스트하세요.
-  TEST_USER_ID: null,
+  // 멀티 계정 테스트를 위해 필요 시 직접 숫자 ID를 넣어 특정 계정으로 강제 테스트하세요.
+  TEST_USER_ID: 1, // 기본값 1 (디버그 모드에서 user_id가 없을 때 사용)
 };
 
 export const MOCK_AUTH_CODE = '123456';

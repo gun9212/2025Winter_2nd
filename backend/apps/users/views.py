@@ -431,6 +431,15 @@ def update_location(request):
     
     serializer = UserLocationSerializer(data=request.data)
     
+    if not serializer.is_valid():
+        print(f"❌ Serializer 검증 실패: {serializer.errors}")
+        print("=" * 60)
+        return Response({
+            'success': False,
+            'error': '입력 데이터가 유효하지 않습니다.',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
     if serializer.is_valid():
         try:
             # 개발 환경에서 인증 없이 테스트하는 경우
@@ -512,14 +521,22 @@ def update_location(request):
             return Response(result, status=status.HTTP_200_OK)
         
         except Exception as e:
+            import traceback
+            print(f"❌ 위치 업데이트 중 예외 발생: {str(e)}")
+            print(traceback.format_exc())
+            print("=" * 60)
             return Response({
                 'success': False,
                 'error': f'위치 업데이트 중 오류가 발생했습니다: {str(e)}'
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+    # Serializer 검증 실패 시
+    print(f"❌ Serializer 검증 실패: {serializer.errors}")
+    print("=" * 60)
     return Response({
         'success': False,
-        'error': serializer.errors
+        'error': '입력 데이터가 유효하지 않습니다.',
+        'errors': serializer.errors
     }, status=status.HTTP_400_BAD_REQUEST)
 
 

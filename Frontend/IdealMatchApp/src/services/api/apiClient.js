@@ -1058,10 +1058,14 @@ class ApiClient {
 
       // 디버그 모드에서 인증 토큰이 없으면 user_id 추가
       const token = await StorageService.getAccessToken();
-      const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
-      if (__DEV__ && !token && testUserId) {
+      const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID) || 1; // 기본값 1 추가
+      
+      // 토큰이 없으면 무조건 user_id 추가 (프로덕션에서도 안전)
+      if (!token) {
         params.append('user_id', testUserId.toString());
-        console.log('🔧 디버그 모드: user_id 추가', testUserId);
+        console.log('🔧 토큰 없음, user_id 추가:', testUserId);
+      } else {
+        console.log('🔧 토큰 있음, user_id 추가 안 함');
       }
 
       console.log('🌐 매칭 체크 API 요청:', {
@@ -1085,6 +1089,11 @@ class ApiClient {
         return {
           matched: true,
           matches: [{
+            id: match.id, // 매칭 ID 추가 (중복 알림 방지용)
+            user1: match.user1, // user1 정보 추가
+            user2: match.user2, // user2 정보 추가
+            user1_id: match.user1?.id || match.user1_id,
+            user2_id: match.user2?.id || match.user2_id,
             user: {
               id: match.user2?.id || match.user2_id,
               username: match.user2?.username || 'Unknown',
