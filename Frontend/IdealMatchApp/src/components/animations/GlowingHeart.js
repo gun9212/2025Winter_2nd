@@ -4,11 +4,16 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 
-const GlowingHeart = ({ size = 200 }) => {
+const GlowingHeart = ({ size = 200, isActive = true }) => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
+    // 활성 상태일 때만 애니메이션 실행
+    if (!isActive) {
+      return;
+    }
+
     // 숨쉬는 듯한 Pulsing 애니메이션 (움직임 감소)
     const pulseAnimation = Animated.loop(
       Animated.sequence([
@@ -48,53 +53,57 @@ const GlowingHeart = ({ size = 200 }) => {
     return () => {
       pulseAnimation.stop();
     };
-  }, []);
+  }, [isActive]);
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
-      {/* Outer Glow Layers - 네온 헤일로 효과 */}
-      <Animated.View
-        style={[
-          styles.glowLayer,
-          styles.glow1,
-          {
-            width: size * 1.5,
-            height: size * 1.5,
-            transform: [{ scale: pulseAnim }],
-            opacity: opacityAnim,
-          },
-        ]}
-      />
-      <Animated.View
-        style={[
-          styles.glowLayer,
-          styles.glow2,
-          {
-            width: size * 1.3,
-            height: size * 1.3,
-            transform: [{ scale: pulseAnim }],
-            opacity: opacityAnim,
-          },
-        ]}
-      />
-      <Animated.View
-        style={[
-          styles.glowLayer,
-          styles.glow3,
-          {
-            width: size * 1.15,
-            height: size * 1.15,
-            transform: [{ scale: pulseAnim }],
-            opacity: opacityAnim,
-          },
-        ]}
-      />
+      {/* Outer Glow Layers - 활성 상태일 때만 표시 */}
+      {isActive && (
+        <>
+          <Animated.View
+            style={[
+              styles.glowLayer,
+              styles.glow1,
+              {
+                width: size * 1.5,
+                height: size * 1.5,
+                transform: [{ scale: pulseAnim }],
+                opacity: opacityAnim,
+              },
+            ]}
+          />
+          <Animated.View
+            style={[
+              styles.glowLayer,
+              styles.glow2,
+              {
+                width: size * 1.3,
+                height: size * 1.3,
+                transform: [{ scale: pulseAnim }],
+                opacity: opacityAnim,
+              },
+            ]}
+          />
+          <Animated.View
+            style={[
+              styles.glowLayer,
+              styles.glow3,
+              {
+                width: size * 1.15,
+                height: size * 1.15,
+                transform: [{ scale: pulseAnim }],
+                opacity: opacityAnim,
+              },
+            ]}
+          />
+        </>
+      )}
 
       {/* Radial Gradient Heart with Outline */}
       <Animated.View
         style={{
-          transform: [{ scale: pulseAnim }],
-          opacity: opacityAnim,
+          transform: [{ scale: isActive ? pulseAnim : 1 }],
+          opacity: isActive ? opacityAnim : 0.6,
         }}
       >
         {/* Radial Gradient Heart */}
@@ -109,27 +118,46 @@ const GlowingHeart = ({ size = 200 }) => {
         >
           <Svg width={size} height={size}>
             <Defs>
-              <RadialGradient
-                id="heartRadialGradient"
-                cx="50%"
-                cy="40%"
-                r="70%"
-                fx="50%"
-                fy="40%"
-              >
-                <Stop offset="0%" stopColor="#FFE5F0" stopOpacity="1" />
-                <Stop offset="30%" stopColor="#FFB7CE" stopOpacity="1" />
-                <Stop offset="60%" stopColor="#FF8DB4" stopOpacity="1" />
-                <Stop offset="85%" stopColor="#FF69B4" stopOpacity="1" />
-                <Stop offset="100%" stopColor="#FF4D9C" stopOpacity="1" />
-              </RadialGradient>
+              {isActive ? (
+                // 핑크 그라디언트 (활성 상태)
+                <RadialGradient
+                  id="heartRadialGradient"
+                  cx="50%"
+                  cy="40%"
+                  r="70%"
+                  fx="50%"
+                  fy="40%"
+                >
+                  <Stop offset="0%" stopColor="#FFE5F0" stopOpacity="1" />
+                  <Stop offset="30%" stopColor="#FFB7CE" stopOpacity="1" />
+                  <Stop offset="60%" stopColor="#FF8DB4" stopOpacity="1" />
+                  <Stop offset="85%" stopColor="#FF69B4" stopOpacity="1" />
+                  <Stop offset="100%" stopColor="#FF4D9C" stopOpacity="1" />
+                </RadialGradient>
+              ) : (
+                // 회색 그라디언트 (비활성 상태)
+                <RadialGradient
+                  id="heartGrayGradient"
+                  cx="50%"
+                  cy="40%"
+                  r="70%"
+                  fx="50%"
+                  fy="40%"
+                >
+                  <Stop offset="0%" stopColor="#E5E7EB" stopOpacity="1" />
+                  <Stop offset="30%" stopColor="#D1D5DB" stopOpacity="1" />
+                  <Stop offset="60%" stopColor="#9CA3AF" stopOpacity="1" />
+                  <Stop offset="85%" stopColor="#6B7280" stopOpacity="1" />
+                  <Stop offset="100%" stopColor="#4B5563" stopOpacity="1" />
+                </RadialGradient>
+              )}
             </Defs>
             <Rect
               x="0"
               y="0"
               width={size}
               height={size}
-              fill="url(#heartRadialGradient)"
+              fill={isActive ? "url(#heartRadialGradient)" : "url(#heartGrayGradient)"}
             />
           </Svg>
         </MaskedView>
@@ -139,9 +167,9 @@ const GlowingHeart = ({ size = 200 }) => {
           <Icon 
             name="heart-outline" 
             size={size} 
-            color="rgba(255, 77, 156, 0.3)"
+            color={isActive ? "rgba(255, 77, 156, 0.3)" : "rgba(107, 114, 128, 0.3)"}
             style={{ 
-              textShadowColor: 'rgba(255, 77, 156, 0.15)',
+              textShadowColor: isActive ? 'rgba(255, 77, 156, 0.15)' : 'rgba(107, 114, 128, 0.15)',
               textShadowOffset: { width: 0, height: 0 },
               textShadowRadius: 1.5,
             }}

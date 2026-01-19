@@ -29,6 +29,9 @@ const MainScreen = ({ navigation }) => {
   const [matchResult, setMatchResult] = useState(null);
   const [isSearching, setIsSearching] = useState(false);
   const [showHeartbeat, setShowHeartbeat] = useState(false);
+  // 매칭 동의 상태
+  const [matchingConsent, setMatchingConsent] = useState(false);
+  const [isUpdatingConsent, setIsUpdatingConsent] = useState(false);
   const matchingIntervalRef = useRef(null);
   const hasNotifiedRef = useRef(false);
   const appState = useRef(AppState.currentState);
@@ -69,6 +72,14 @@ const MainScreen = ({ navigation }) => {
       initializeLocation();
     }
   }, [userProfile, idealType]);
+
+  // 프로필 로드 시 매칭 동의 상태 불러오기
+  useEffect(() => {
+    if (userProfile && userProfile.matching_consent !== undefined) {
+      setMatchingConsent(userProfile.matching_consent);
+      console.log('✅ 매칭 동의 상태 불러오기:', userProfile.matching_consent);
+    }
+  }, [userProfile]);
 
   const initializeLocation = async () => {
     try {
@@ -273,6 +284,42 @@ const MainScreen = ({ navigation }) => {
     }, interval);
   };
 
+  // 매칭 동의 토글 함수
+  const handleToggleConsent = async () => {
+    // 중복 요청 방지
+    if (isUpdatingConsent) {
+      return;
+    }
+    
+    // 현재 상태의 반대로 설정
+    const newConsentState = !matchingConsent;
+    
+    try {
+      setIsUpdatingConsent(true);
+      console.log(`🔄 매칭 동의 ${newConsentState ? '활성화' : '비활성화'} 중...`);
+      
+      // API 호출
+      const result = await apiClient.updateConsent(newConsentState);
+      
+      if (result.success) {
+        // 성공 시 state 업데이트
+        setMatchingConsent(newConsentState);
+        console.log(`✅ 매칭 동의 ${newConsentState ? '활성화' : '비활성화'} 완료`);
+        
+        // 햅틱 피드백
+        hapticService.heartbeat();
+      } else {
+        console.error('❌ 매칭 동의 업데이트 실패:', result.error);
+        Alert.alert('오류', result.error || '매칭 동의 상태를 변경할 수 없습니다.');
+      }
+    } catch (error) {
+      console.error('❌ 매칭 동의 업데이트 오류:', error);
+      Alert.alert('오류', error.message || '매칭 동의 상태를 변경할 수 없습니다.');
+    } finally {
+      setIsUpdatingConsent(false);
+    }
+  };
+
   const handleLogout = () => {
     Alert.alert('로그아웃', '정말 로그아웃하시겠습니까?', [
       { text: '취소', style: 'cancel' },
@@ -332,16 +379,28 @@ const MainScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* 중앙 하트 카드 */}
-        <View style={styles.heartCard}>
+        {/* 중앙 하트 카드 - 클릭 가능하게 변경 */}
+        <TouchableOpacity
+          style={styles.heartCard}
+          onPress={handleToggleConsent}
+          activeOpacity={0.8}
+          disabled={isUpdatingConsent || !isSetupComplete}
+        >
           {/* 상단 미세한 빛 효과 */}
           <View style={styles.heartCardOverlay} />
           
           <View style={styles.heartContainer}>
             {/* 3D Glowing Heart with Pulsing Animation */}
-            <GlowingHeart size={220} />
+            <GlowingHeart size={220} isActive={matchingConsent} />
+            
+            {/* 업데이트 중 인디케이터 */}
+            {isUpdatingConsent && (
+              <View style={styles.consentLoadingOverlay}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              </View>
+            )}
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* 하단 액션 버튼 그리드 */}
         <View style={styles.buttonGrid}>
@@ -517,6 +576,17 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  consentLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 40,
   },
 
   // 버튼 그리드

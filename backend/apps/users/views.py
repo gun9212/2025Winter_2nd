@@ -14,7 +14,7 @@ from decouple import config
 import boto3
 from botocore.exceptions import ClientError
 from .models import UserLocation, User, AuthUser
-from .serializers import UserLocationSerializer, UserSerializer, RegisterSerializer, LoginSerializer, EmailVerificationSerializer, IdealTypeProfileSerializer
+from .serializers import UserLocationSerializer, UserSerializer, RegisterSerializer, LoginSerializer, EmailVerificationSerializer, IdealTypeProfileSerializer, MatchingConsentSerializer
 
 
 @api_view(['POST'])
@@ -847,4 +847,91 @@ def check_profile_completeness(request):
         return Response({
             'success': False,
             'error': f'프로필 완성도 확인 중 오류가 발생했습니다: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated if not settings.DEBUG else AllowAny])
+def update_consent(request):
+    """
+    매칭 동의 업데이트 API
+    POST /api/users/consent/
+    
+    Request Body:
+    {
+        "matching_consent": true  // 또는 false
+    }
+    
+    개발 환경(DEBUG=True)에서는 인증 없이 테스트 가능
+    user_id를 request body에 포함하여 전송하면 해당 사용자의 동의 상태 업데이트
+    
+    Response (200 OK):
+    {
+        "success": true,
+        "message": "매칭 동의가 업데이트되었습니다.",
+        "data": {
+            "matching_consent": true,
+            "consent_updated_at": "2025-01-19T12:00:00Z"
+        }
+    }
+    """
+    serializer = MatchingConsentSerializer(data=request.data)
+    
+    if not serializer.is_valid():
+        return Response({
+            'success': False,
+            'error': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    matching_consent = serializer.validated_data['matching_consent']
+    
+    try:
+        # 개발 환경에서 인증 없이 테스트하는 경우
+        if settings.DEBUG and not request.user.is_authenticated:
+            user_id = request.data.get('user_id')
+            if not user_id:
+                return Response({
+                    'success': False,
+                    'error': '테스트 모드: user_id가 필요합니다. (예: {"user_id": 1, "matching_consent": true})'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            try:
+                auth_user = AuthUser.objects.get(id=user_id)
+                user_profile = auth_user.profile
+            except (AuthUser.DoesNotExist, User.DoesNotExist):
+                return Response({
+                    'success': False,
+                    'error': f'user_id {user_id}에 해당하는 프로필이 없습니다. 먼저 프로필을 생성해주세요.'
+                }, status=status.HTTP_404_NOT_FOUND)
+        else:
+            # 정상 모드: 인증된 사용자 사용
+            try:
+                user_profile = request.user.profile
+            except User.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'error': '프로필이 없습니다. 먼저 프로필을 생성해주세요.'
+                }, status=status.HTTP_404_NOT_FOUND)
+        
+        # 매칭 동의 상태 업데이트
+        user_profile.matching_consent = matching_consent
+        user_profile.consent_updated_at = timezone.now()
+        user_profile.save(update_fields=['matching_consent', 'consent_updated_at'])
+        
+        # 응답 메시지
+        consent_status = '활성화' if matching_consent else '비활성화'
+        
+        return Response({
+            'success': True,
+            'message': f'매칭 동의가 {consent_status}되었습니다.',
+            'data': {
+                'matching_consent': user_profile.matching_consent,
+                'consent_updated_at': user_profile.consent_updated_at.isoformat()
+            }
+        }, status=status.HTTP_200_OK)
+    
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': f'매칭 동의 업데이트 중 오류가 발생했습니다: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

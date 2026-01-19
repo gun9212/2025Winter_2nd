@@ -981,6 +981,58 @@ class ApiClient {
   }
 
   /**
+   * 매칭 동의 업데이트
+   * API 14: POST /api/users/consent/
+   * @param {boolean} matchingConsent - 매칭 동의 여부 (true/false)
+   * @param {number} userId - 사용자 ID (디버그 모드에서 사용, 선택사항)
+   * @returns {Promise<Object>} 업데이트 결과
+   */
+  async updateConsent(matchingConsent, userId = null) {
+    try {
+      // 디버그 모드이고 user_id가 없으면 테스트 user_id 사용
+      const requestBody = {
+        matching_consent: matchingConsent,
+      };
+      
+      // 디버그 모드에서 인증 토큰이 없으면 user_id 추가
+      const token = await StorageService.getAccessToken();
+      const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID) || 1; // 기본값 1
+      if (__DEV__ && !token && testUserId) {
+        requestBody.user_id = testUserId;
+        console.log('🔧 디버그 모드: user_id 추가', requestBody.user_id);
+      }
+
+      console.log('🌐 매칭 동의 업데이트 API 요청:', {
+        url: `${this.baseURL}/users/consent/`,
+        method: 'POST',
+        body: requestBody,
+      });
+
+      const response = await this.request('/users/consent/', {
+        method: 'POST',
+        body: JSON.stringify(requestBody),
+      });
+
+      console.log('✅ 매칭 동의 업데이트 API 응답:', response);
+
+      return {
+        success: true,
+        message: response.message || '매칭 동의가 업데이트되었습니다.',
+        data: response.data || response,
+      };
+    } catch (error) {
+      console.error('❌ 매칭 동의 업데이트 실패:', error);
+      console.error('   에러 상세:', error.message);
+      console.error('   API URL:', `${this.baseURL}/users/consent/`);
+      return {
+        success: false,
+        error: error.message,
+        message: error.message || '매칭 동의 업데이트 중 오류가 발생했습니다.',
+      };
+    }
+  }
+
+  /**
    * 회원가입
    * API 1: POST /api/users/auth/register/
    * @param {string} username - 아이디

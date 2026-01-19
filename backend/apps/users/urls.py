@@ -21,5 +21,8 @@ urlpatterns = [
     
     # 이상형 프로필 관련 API
     path('ideal-type/', views.ideal_type_view, name='ideal_type_view'),  # GET, POST, PUT 모두 처리
+    
+    # 서비스 설정 관련 API
+    path('consent/', views.update_consent, name='update_consent'),  # POST: 매칭 동의 업데이트
 ]
 
