@@ -64,8 +64,8 @@ class UserAdmin(admin.ModelAdmin):
 @admin.register(IdealTypeProfile)
 class IdealTypeProfileAdmin(admin.ModelAdmin):
     """이상형 프로필 Admin"""
-    list_display = ('user', 'height_min', 'height_max', 'age_min', 'age_max', 'match_threshold', 'created_at')
-    list_filter = ('match_threshold', 'created_at')
+    list_display = ('user', 'height_min', 'height_max', 'age_min', 'age_max', 'preferred_gender', 'match_threshold', 'created_at')
+    list_filter = ('preferred_gender', 'match_threshold', 'created_at')
     search_fields = ('user__user__username', 'user__user__email')
     raw_id_fields = ('user',)
     readonly_fields = ('created_at', 'updated_at')
@@ -75,7 +75,7 @@ class IdealTypeProfileAdmin(admin.ModelAdmin):
             'fields': ('user',)
         }),
         ('외형 조건', {
-            'fields': ('height_min', 'height_max', 'age_min', 'age_max')
+            'fields': ('height_min', 'height_max', 'age_min', 'age_max', 'preferred_gender')
         }),
         ('성격 및 관심사 조건', {
             'fields': ('preferred_mbti', 'preferred_personality', 'preferred_interests')
