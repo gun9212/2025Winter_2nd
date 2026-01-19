@@ -138,6 +138,14 @@ class IdealTypeProfile(models.Model):
     age_min = models.IntegerField(verbose_name='최소 나이')
     age_max = models.IntegerField(verbose_name='최대 나이')
     
+    # 성별 조건
+    preferred_gender = models.CharField(
+        max_length=1,
+        choices=[('M', '남성'), ('F', '여성'), ('A', '모두')],
+        default='A',
+        verbose_name='선호 성별'
+    )
+    
     # 성격 및 관심사 조건
     preferred_mbti = models.JSONField(default=list, verbose_name='선호 MBTI 리스트')
     preferred_personality = models.JSONField(default=list, verbose_name='선호 성격 유형 리스트')

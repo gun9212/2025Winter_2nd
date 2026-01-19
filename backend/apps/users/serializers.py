@@ -81,7 +81,7 @@ class IdealTypeProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = IdealTypeProfile
         fields = ['height_min', 'height_max', 'age_min', 'age_max', 
-                 'preferred_mbti', 'preferred_personality', 'preferred_interests', 
+                 'preferred_gender', 'preferred_mbti', 'preferred_personality', 'preferred_interests', 
                  'match_threshold']
         read_only_fields = ['created_at', 'updated_at']
     
@@ -119,6 +119,13 @@ class IdealTypeProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'preferred_interests': '선호 관심사를 최소 1개 이상 선택해주세요.'
             })
+        
+        # 선호 성별 검증
+        if 'preferred_gender' in data:
+            if data['preferred_gender'] not in ['M', 'F', 'A']:
+                raise serializers.ValidationError({
+                    'preferred_gender': '선호 성별은 M(남성), F(여성), A(모두) 중 하나여야 합니다.'
+                })
         
         return data
 
