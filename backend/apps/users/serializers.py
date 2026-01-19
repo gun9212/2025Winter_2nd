@@ -194,19 +194,19 @@ class ServiceActiveSerializer(serializers.Serializer):
 class PasswordResetRequestSerializer(serializers.Serializer):
     """
     비밀번호 재설정 요청 Serializer
-    API 16: POST /api/auth/password-reset/request/
+    API 16: POST /api/users/auth/password-reset/request/
     """
     username = serializers.CharField(required=True, max_length=100, help_text='아이디')
-    phone_number = serializers.CharField(required=True, max_length=20, help_text='전화번호')
+    email = serializers.EmailField(required=True, help_text='이메일')
 
 
 class PasswordResetVerifySerializer(serializers.Serializer):
     """
     비밀번호 재설정 인증 확인 Serializer
-    API 17: POST /api/auth/password-reset/verify/
+    API 17: POST /api/users/auth/password-reset/verify/
     """
     username = serializers.CharField(required=True, max_length=100, help_text='아이디')
-    phone_number = serializers.CharField(required=True, max_length=20, help_text='전화번호')
+    email = serializers.EmailField(required=True, help_text='이메일')
     verification_code = serializers.CharField(required=True, max_length=6, help_text='인증번호')
 
 

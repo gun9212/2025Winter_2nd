@@ -15,16 +15,16 @@
 - **API 8**: 이상형 프로필 조회 (`GET /api/users/ideal-type/`)
 - **API 9**: 이상형 프로필 생성/수정 (`POST/PUT /api/users/ideal-type/`)
 - **API 10**: 위치 업데이트 (`POST /api/users/location/update/`)
-
-### ⚠️ 미구현 API
-- **API 11**: 현재 위치 조회 (`GET /api/users/location/`)
-- **API 12**: 매칭 가능 인원 수 조회 (`GET /api/matches/matchable-count/`)
-- **API 13**: 매칭 체크 (포그라운드) (`GET /api/matches/check/`)
-- **API 14**: 매칭 동의 업데이트 (`POST /api/users/consent/`)
-- **API 15**: 백그라운드 알림 등록 (`POST /api/notifications/register/`)
+- **API 12**: 매칭 가능 인원 수 조회 (`GET /api/matching/matchable-count/`)
+- **API 13**: 매칭 체크 (포그라운드) (`GET /api/matching/check/`)
+- **API 15**: 백그라운드 알림 등록 (`POST /api/matching/notifications/register/`)
 - **API 16**: 비밀번호 재설정 요청 (`POST /api/users/auth/password-reset/request/`)
 - **API 17**: 비밀번호 재설정 인증 확인 (`POST /api/users/auth/password-reset/verify/`)
 - **API 18**: 비밀번호 재설정 (`POST /api/users/auth/password-reset/`)
+
+### ⚠️ 미구현 API
+- **API 11**: 현재 위치 조회 (`GET /api/users/location/`)
+- **API 14**: 매칭 동의 업데이트 (`POST /api/users/consent/`)
 
 ---
 
@@ -138,7 +138,7 @@
 
 ---
 
-### API 16: 비밀번호 재설정 요청 (`POST /api/users/auth/password-reset/request/`) ⚠️ 미구현
+### API 16: 비밀번호 재설정 요청 (`POST /api/users/auth/password-reset/request/`) ✅ 구현 완료
 
 **기능:**
 - 아이디와 이메일을 받아 사용자 확인
@@ -158,7 +158,7 @@
 
 ---
 
-### API 17: 비밀번호 재설정 인증 확인 (`POST /api/users/auth/password-reset/verify/`) ⚠️ 미구현
+### API 17: 비밀번호 재설정 인증 확인 (`POST /api/users/auth/password-reset/verify/`) ✅ 구현 완료
 
 **기능:**
 - 비밀번호 재설정용 인증번호를 검증합니다
@@ -185,7 +185,7 @@
 
 ---
 
-### API 18: 비밀번호 재설정 (`POST /api/users/auth/password-reset/`) ⚠️ 미구현
+### API 18: 비밀번호 재설정 (`POST /api/users/auth/password-reset/`) ✅ 구현 완료
 
 **기능:**
 - 비밀번호 재설정 토큰과 새 비밀번호를 받아 비밀번호를 변경합니다
@@ -239,11 +239,24 @@
 - ✅ 프로필 수정 화면에서 정보를 변경하고 "저장" 버튼을 누를 때 (PUT)
 - ✅ 프로필 입력 화면에서 모든 필드를 입력하고 "완료" 버튼을 누를 때
 
+**화면 이동 동작:**
+- **처음 프로필 생성 시**: 프로필 저장 완료 → 이상형 입력 화면으로 이동
+- **프로필 수정 시** (Edit Profile 버튼 클릭): 프로필 수정 완료 → 메인 화면으로 이동
+
 **예시 시나리오:**
+
+**시나리오 1: 처음 프로필 생성**
 ```
 사용자: "프로필 입력 화면에서 나이: 25, 성별: 남성, 키: 175, MBTI: ENFP 선택, 
         성격: [활발한, 긍정적인] 선택, 관심사: [영화, 음악, 여행] 선택 → 저장 버튼 클릭"
-앱: API 6 호출 → 성공 시 "프로필이 저장되었습니다" 메시지 표시
+앱: API 6 호출 (POST) → 성공 시 "프로필이 저장되었습니다" 메시지 표시 → 이상형 입력 화면으로 이동
+```
+
+**시나리오 2: 프로필 수정**
+```
+사용자: "메인 화면에서 'Edit Profile' 버튼 클릭 → 프로필 수정 화면 진입"
+사용자: "나이: 26으로 변경, 관심사: [영화, 음악, 여행, 독서] 추가 → 저장 버튼 클릭"
+앱: API 6 호출 (PUT) → 성공 시 "프로필이 저장되었습니다" 메시지 표시 → 메인 화면으로 이동
 ```
 
 ---
@@ -364,16 +377,30 @@
 
 ## 🎯 5단계: 매칭 시스템
 
-### API 12: 매칭 가능 인원 수 조회 (`GET /api/matches/matchable-count/`) ⚠️ 미구현
+### API 12: 매칭 가능 인원 수 조회 (`GET /api/matching/matchable-count/`) ✅ 구현 완료
 
 **기능:**
 - boundary(반경) 내에서 이상형 조건에 부합하는 사용자 수를 조회합니다
-- 현재 위치 기준으로 지정된 반경 내에 있는 사람들 중 조건에 부합하는 인원 수를 반환 (예: "현재 50m 반경 내에 3명이 조건에 맞습니다")
+- 현재 위치 기준으로 지정된 반경 내에 있는 사람들 중 조건에 부합하는 인원 수를 반환 (예: "현재 500m 반경 내에 3명이 조건에 맞습니다")
+- 매칭 동의가 ON인 사용자만 조회 대상에 포함됩니다
 
-**Query Parameters (필수):**
-- `latitude` (float): 현재 위치의 위도 (예: 37.5665)
-- `longitude` (float): 현재 위치의 경도 (예: 126.9780)
-- `radius` (float): 반경 (km 단위, 예: 0.05 = 50m, 기본값: 0.05)
+**Query Parameters:**
+- `latitude` (float, 필수): 현재 위치의 위도 (예: 37.5665)
+- `longitude` (float, 필수): 현재 위치의 경도 (예: 126.9780)
+- `radius` (float, 선택): 반경 (km 단위, 예: 0.5 = 500m, 기본값: 0.5)
+- `user_id` (int, 선택): 테스트 모드에서 사용 (DEBUG=True일 때만)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "matchable_count": 3,
+    "last_count_updated_at": "2025-01-16T10:00:00Z",
+    "radius": 0.5
+  }
+}
+```
 
 **필요한 때:**
 - ✅ 메인 화면에서 "현재 boundary 내 매칭 가능한 인원 수"를 실시간으로 표시하기 위해
@@ -384,19 +411,45 @@
 ```
 사용자: "메인 화면 진입"
 앱: API 12 호출 (latitude, longitude, radius 포함) 
-    → "현재 50m 반경 내에 3명이 이상형 조건에 부합합니다" 메시지 표시
+    → "현재 500m 반경 내에 3명이 이상형 조건에 부합합니다" 메시지 표시
 ```
 
 ---
 
-### API 13: 매칭 체크 (포그라운드) (`GET /api/matches/check/`) ⚠️ 미구현
+### API 13: 매칭 체크 (포그라운드) (`GET /api/matching/check/`) ✅ 구현 완료
 
 **기능:**
 - 앱이 포그라운드에서 실행 중일 때 새로운 매칭이 발생했는지 확인합니다
 - 경량 응답으로 빠르게 확인 가능 (폴링에 최적화)
 - **주의**: 포그라운드에서는 알림을 표시하지 않습니다 (화면이 켜져있으므로)
 - **백그라운드 알림**: 앱이 꺼져있거나 백그라운드에 있을 때는 서버가 자동으로 푸시 알림을 보냅니다
-- **중요**: 매칭 동의(API 14)가 ON 상태일 때만 호출됩니다
+- **중요**: 매칭 동의(API 14)가 ON 상태일 때만 호출됩니다 (현재는 자동으로 ON으로 설정됨)
+- **위치 정보**: 현재 사용자의 위치는 DB에서 자동으로 가져옵니다 (Query Parameters에 포함할 필요 없음)
+
+**Query Parameters:**
+- `radius` (float, 선택): 반경 (km 단위, 예: 0.5 = 500m, 기본값: 0.5)
+- `user_id` (int, 선택): 테스트 모드에서 사용 (DEBUG=True일 때만)
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "has_new_match": true,
+    "new_matches_count": 1,
+    "latest_match": {
+      "id": 1,
+      "user1": {"id": 1, "username": "user1", "age": 25, "gender": "M"},
+      "user2": {"id": 2, "username": "user2", "age": 23, "gender": "F"},
+      "matched_at": "2025-01-16T10:00:00Z",
+      "matched_criteria": {
+        "distance_m": 45.2,
+        "match_score": 4
+      }
+    }
+  }
+}
+```
 
 **필요한 때:**
 - ✅ 앱이 포그라운드에서 실행 중일 때 10초마다 자동으로 호출 (매칭 동의 ON 상태일 때만)
@@ -484,13 +537,34 @@
 
 ## 🔔 7단계: 백그라운드 알림 시스템
 
-### API 15: 백그라운드 알림 등록 (`POST /api/notifications/register/`) ⚠️ 미구현
+### API 15: 백그라운드 알림 등록 (`POST /api/matching/notifications/register/`) ✅ 구현 완료
 
 **기능:**
 - 앱이 백그라운드에 있거나 화면이 꺼져있을 때 매칭 알림을 받기 위해 푸시 알림 토큰을 등록합니다
-- **중요**: 매칭 동의(API 14)가 ON 상태일 때만 서버가 매칭을 감지하고 푸시 알림을 보냅니다
+- **중요**: 매칭 동의(API 14)가 ON 상태일 때만 서버가 매칭을 감지하고 푸시 알림을 보냅니다 (현재는 자동으로 ON으로 설정됨)
 - **중요**: 매칭 동의가 OFF 상태면 위치 데이터 수집이 중지되고 매칭 감지 자체를 하지 않으므로 푸시 알림이 전송되지 않습니다
 - **중요**: 화면이 켜져있을 때는 알림이 표시되지 않습니다 (포그라운드에서는 API 13으로만 체크)
+
+**Request Body:**
+```json
+{
+  "fcm_token": "fcm_token_string",
+  "device_type": "ios"  // 또는 "android"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "푸시 알림 토큰이 등록되었습니다.",
+  "data": {
+    "notification_id": 1,
+    "device_type": "ios",
+    "is_active": true
+  }
+}
+```
 
 **필요한 때:**
 - ✅ 앱 설치 후 처음 실행 시
@@ -568,9 +642,10 @@ ON → OFF: API 14 호출 → 위치 데이터 수집 중지 → 매칭 감지 �
         → API 3: 로그인 (새 비밀번호 사용)
         → API 15: 백그라운드 알림 등록
         ↓
-4. 프로필 입력 화면
-   → API 6: 프로필 생성 (나이, 성별, 키, MBTI, 성격, 관심사)
+4. 프로필 입력 화면 (처음 생성)
+   → API 6: 프로필 생성 (나이, 성별, 키, MBTI, 성격, 관심사) - POST
    → API 7: 프로필 완성도 확인
+   → 앱: 프로필 저장 완료 → 이상형 입력 화면으로 자동 이동
    ↓
 5. 이상형 프로필 입력 화면
    → API 9: 이상형 프로필 생성 (키 범위, 나이 범위, 선호 MBTI, 성격, 관심사)
@@ -605,8 +680,9 @@ ON → OFF: API 14 호출 → 위치 데이터 수집 중지 → 매칭 감지 �
 ### 주요 흐름 설명
 
 **초기 설정 (1-5단계):**
-- 회원가입 → 로그인 → 프로필 입력 → 이상형 프로필 입력
+- 회원가입 → 로그인 → 프로필 입력 (처음 생성) → 이상형 프로필 입력
 - 모든 정보 입력 완료 후 서비스 시작 가능
+- **참고**: 프로필 수정 시 (Edit Profile)에는 프로필 저장 후 메인 화면으로 바로 돌아감
 
 **로그인 및 비밀번호 재설정 (3단계):**
 - 정상 로그인: API 3으로 로그인 후 서비스 이용
