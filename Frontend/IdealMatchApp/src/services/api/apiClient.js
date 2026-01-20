@@ -272,6 +272,9 @@ class ApiClient {
     // 토큰이 있고 인증이 필요한 경우에만 Authorization 헤더 추가
     if (token && requireAuth) {
       headers['Authorization'] = `Bearer ${token}`;
+      console.log('🔑 Authorization 헤더 추가됨');
+    } else if (requireAuth && !token) {
+      console.warn('⚠️ 인증이 필요한데 토큰이 없습니다. 로그인이 필요할 수 있습니다.');
     }
 
     try {
@@ -279,7 +282,9 @@ class ApiClient {
         url,
         method: options.method || 'GET',
         hasToken: !!token,
+        requireAuth: requireAuth,
         headers: Object.keys(headers),
+        hasAuthorization: !!headers['Authorization'],
       });
 
       const response = await fetch(url, {
@@ -465,19 +470,33 @@ class ApiClient {
       
       // 인증 토큰 확인
       const token = await StorageService.getAccessToken();
-      const requireAuth = token !== null; // 토큰이 있으면 인증 필요, 없으면 인증 불필요 (디버그 모드)
       
-      // 토큰이 없을 때만 user_id 사용 (디버그 모드)
-      // 로그인한 사용자는 토큰으로 인증되므로 user_id를 사용하지 않음
-      if (__DEV__ && !token) {
-        // 명시적으로 전달된 userId가 있으면 사용, 없으면 TEST_USER_ID 사용
-        const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
-        if (testUserId) {
-          requestBody.user_id = testUserId;
-          console.log('🔧 디버그 모드: 토큰 없음, user_id 추가', requestBody.user_id);
+      // 실제 기기에서는 항상 토큰이 필요함 (로그인 필수)
+      if (!token) {
+        // 디버그 모드에서만 user_id 사용 허용
+        if (__DEV__) {
+          const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
+          if (testUserId) {
+            requestBody.user_id = testUserId;
+            console.log('🔧 디버그 모드: 토큰 없음, user_id 추가', requestBody.user_id);
+          } else {
+            const errorMsg = '로그인이 필요합니다. 위치 업데이트를 위해 먼저 로그인해주세요.';
+            console.error('❌', errorMsg);
+            return {
+              success: false,
+              error: errorMsg,
+              requiresLogin: true,
+            };
+          }
         } else {
-          console.warn('⚠️ 디버그 모드: 토큰이 없고 TEST_USER_ID도 설정되지 않았습니다.');
-          console.warn('   위치 업데이트를 위해 로그인이 필요하거나, config.js에서 TEST_USER_ID를 설정해주세요.');
+          // 프로덕션 모드에서는 무조건 로그인 필요
+          const errorMsg = '로그인이 필요합니다. 위치 업데이트를 위해 먼저 로그인해주세요.';
+          console.error('❌', errorMsg);
+          return {
+            success: false,
+            error: errorMsg,
+            requiresLogin: true,
+          };
         }
       }
       // 토큰이 있으면 user_id를 사용하지 않음 (로그인한 사용자로 인증됨)
@@ -486,14 +505,14 @@ class ApiClient {
         url: `${this.baseURL}/users/location/update/`,
         method: 'POST',
         body: requestBody,
-        requireAuth: requireAuth,
+        requireAuth: !!token, // 토큰이 있으면 인증 필요
         hasToken: !!token,
       });
 
       const response = await this.request('/users/location/update/', {
         method: 'POST',
         body: JSON.stringify(requestBody),
-        requireAuth: requireAuth, // 토큰이 없으면 인증 불필요
+        requireAuth: !!token, // 토큰이 있으면 인증 필요, 없으면 디버그 모드에서만 user_id 사용
       });
 
       console.log('✅ API 응답:', response);
@@ -1109,22 +1128,37 @@ class ApiClient {
         max_distance: maxDistance.toString(), // 0.05 = 50m
       });
 
-      // 토큰이 없을 때만 user_id 추가
+      // 인증 토큰 확인
       const token = await StorageService.getAccessToken();
       const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
       
-      if (!token && testUserId) {
-        params.append('user_id', testUserId.toString());
-        console.log('🔧 토큰 없음, user_id 추가:', testUserId);
+      // 실제 기기에서는 항상 토큰이 필요함 (로그인 필수)
+      if (!token) {
+        // 디버그 모드에서만 user_id 사용 허용
+        if (__DEV__ && testUserId) {
+          params.append('user_id', testUserId.toString());
+          console.log('🔧 디버그 모드: 토큰 없음, user_id 추가:', testUserId);
+        } else {
+          const errorMsg = '로그인이 필요합니다. 활성 매칭 수 조회를 위해 먼저 로그인해주세요.';
+          console.error('❌', errorMsg);
+          return {
+            success: false,
+            count: 0,
+            error: errorMsg,
+            requiresLogin: true,
+          };
+        }
       }
 
       console.log('🌐 활성 매칭 수 API 요청:', {
         url: `${this.baseURL}/matching/active-count/?${params.toString()}`,
         method: 'GET',
+        hasToken: !!token,
       });
 
       const response = await this.request(`/matching/active-count/?${params.toString()}`, {
         method: 'GET',
+        requireAuth: !!token, // 토큰이 있으면 인증 필요
       });
 
       console.log('✅ 활성 매칭 수 API 응답:', response);
@@ -1261,25 +1295,39 @@ class ApiClient {
         radius: radius.toString(),
       });
 
-      // 디버그 모드에서 인증 토큰이 없으면 user_id 추가
+      // 인증 토큰 확인
       const token = await StorageService.getAccessToken();
       const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
       
-      // 토큰이 없을 때만 user_id 추가 (로그인하면 토큰 사용)
-      if (!token && testUserId) {
-        params.append('user_id', testUserId.toString());
-        console.log('🔧 토큰 없음, user_id 추가:', testUserId);
-      } else if (token) {
+      // 실제 기기에서는 항상 토큰이 필요함 (로그인 필수)
+      if (!token) {
+        // 디버그 모드에서만 user_id 사용 허용
+        if (__DEV__ && testUserId) {
+          params.append('user_id', testUserId.toString());
+          console.log('🔧 디버그 모드: 토큰 없음, user_id 추가:', testUserId);
+        } else {
+          const errorMsg = '로그인이 필요합니다. 매칭 체크를 위해 먼저 로그인해주세요.';
+          console.error('❌', errorMsg);
+          return {
+            matched: false,
+            matches: [],
+            error: errorMsg,
+            requiresLogin: true,
+          };
+        }
+      } else {
         console.log('🔧 토큰 있음, user_id 추가 안 함 (JWT 토큰 사용)');
       }
 
       console.log('🌐 매칭 체크 API 요청:', {
         url: `${this.baseURL}/matching/check/?${params.toString()}`,
         method: 'GET',
+        hasToken: !!token,
       });
 
       const response = await this.request(`/matching/check/?${params.toString()}`, {
         method: 'GET',
+        requireAuth: !!token, // 토큰이 있으면 인증 필요
       });
 
       console.log('✅ 매칭 체크 API 응답:', response);

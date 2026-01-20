@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.models import Q
 from decimal import Decimal
+from datetime import timedelta
 
 from apps.users.models import User, UserLocation, AuthUser
 from apps.users.permissions import IsEmailVerified
@@ -336,7 +337,16 @@ def match_check(request):
         # 새 매칭 여부 판단
         # 1. 실제로 새로 생성된 매칭만 새 매칭으로 간주
         # 2. 거리 밖으로 나갔다가 다시 만난 경우는 이미 new_matches에 포함됨
+        # 3. 매칭이 최근에 생성되었으면(예: 5초 이내) 양쪽 모두 새 매칭으로 간주
         has_new_match = len(new_matches) > 0
+        
+        # 최근에 생성된 매칭인지 확인 (양쪽 모두 알림을 받도록)
+        if not has_new_match and latest_match:
+            # 매칭 생성 시간이 5초 이내인 경우 새 매칭으로 간주
+            time_since_match = timezone.now() - latest_match.matched_at
+            if time_since_match <= timedelta(seconds=5):
+                has_new_match = True
+                print(f'🆕 최근 생성된 매칭으로 간주 (생성 후 {time_since_match.total_seconds():.1f}초): {latest_match.id}')
 
         return Response({
             'success': True,

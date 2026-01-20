@@ -366,8 +366,12 @@ const MainScreen = ({ navigation }) => {
         const user2Id = bestMatch.user2_id || bestMatch.user2?.id || 0;
         const userPairId = `${Math.min(user1Id, user2Id)}_${Math.max(user1Id, user2Id)}`;
         
-        // 이미 알림을 보낸 매칭인지 확인 (매칭 ID 또는 사용자 조합으로 확인)
-        if (notifiedMatchesRef.current.has(matchId) || notifiedMatchesRef.current.has(userPairId)) {
+        // 새 매칭인 경우 (result.isNewMatch === true): 알림 기록을 무시하고 무조건 알림 표시
+        // 매칭이 재생성된 경우(예: 상대방이 매칭 동의를 토글) 양쪽 모두 알림을 받아야 하므로
+        const isTrulyNewMatch = result.isNewMatch === true;
+        
+        // 이미 알림을 보낸 매칭인지 확인 (새 매칭이 아닐 때만 확인)
+        if (!isTrulyNewMatch && (notifiedMatchesRef.current.has(matchId) || notifiedMatchesRef.current.has(userPairId))) {
           console.log('ℹ️ 이미 알림을 보낸 매칭:', matchId, '또는', userPairId);
           // 중복 알림 방지: 매칭 동의 활성화 윈도우도 초기화 (더 이상 알림 안 오도록)
           if (isWithinConsentWindow || isMatchAfterConsent) {
@@ -375,6 +379,13 @@ const MainScreen = ({ navigation }) => {
             console.log('🔄 매칭 동의 활성화 윈도우 초기화 (이미 알림 보낸 매칭)');
           }
           return; // 중복 알림 방지
+        }
+        
+        // 새 매칭인 경우: 기존 알림 기록 제거 (재생성된 매칭도 알림을 받도록)
+        if (isTrulyNewMatch) {
+          notifiedMatchesRef.current.delete(matchId);
+          notifiedMatchesRef.current.delete(userPairId);
+          console.log('🔄 새 매칭 감지 - 기존 알림 기록 제거:', matchId, userPairId);
         }
         
         console.log('🎉 새 매칭 발견! 로컬 알림 표시:', matchId);
@@ -628,8 +639,17 @@ const MainScreen = ({ navigation }) => {
       return;
     }
     
+    // Android는 Foreground Service를 사용하므로 여기서는 실행하지 않음
+    if (Platform.OS === 'android') {
+      console.log('🔄 Android 백그라운드 매칭: Foreground Service에 의존');
+      return;
+    }
+    
+    // iOS 백그라운드: watchLocation과 함께 setInterval을 fallback으로 사용
+    // watchLocation이 백그라운드에서 제대로 동작하지 않을 수 있으므로
+    // setInterval을 추가로 사용하여 주기적으로 위치 업데이트 시도
     const interval = DEFAULT_BACKGROUND_INTERVAL;
-    console.log(`🔄 백그라운드 매칭 시작 (${interval / 1000}초 간격, 서버 신호 확인)`);
+    console.log(`🔄 iOS 백그라운드 매칭 시작 (${interval / 1000}초 간격, watchLocation + setInterval)`);
     
     // 기존 interval이 있으면 제거
     if (backgroundIntervalRef.current) {
@@ -639,7 +659,7 @@ const MainScreen = ({ navigation }) => {
     
     backgroundIntervalRef.current = setInterval(async () => {
       try {
-        console.log('⏰ 백그라운드 매칭 체크 (서버 신호 확인, 5초 간격)...');
+        console.log('⏰ iOS 백그라운드 위치 업데이트 (setInterval fallback)...');
         
         // 현재 위치 가져오기
         const currentLocation = await locationService.getCurrentLocation();
@@ -648,14 +668,14 @@ const MainScreen = ({ navigation }) => {
         // 위치 서버에 전송
         await sendLocationToServer(currentLocation);
         
-        // 디바운싱된 매칭 체크 (최소 5초 간격 보장)
+        // 디바운싱된 매칭 체크
         await searchMatchesDebounced(currentLocation);
         
         // 활성 매칭 수도 조회
         await fetchActiveMatches(currentLocation);
         
       } catch (error) {
-        console.error('❌ 백그라운드 매칭 체크 오류:', error);
+        console.error('❌ iOS 백그라운드 매칭 체크 오류:', error);
       }
     }, interval);
   };

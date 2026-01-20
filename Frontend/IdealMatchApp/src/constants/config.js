@@ -7,7 +7,8 @@ const USE_SIMULATOR = false; // 실제 기기 테스트 시 false로 설정
 
 // Mac의 로컬 IP 주소 (실제 기기 테스트 시 사용)
 // 로컬 IP 확인: ifconfig | grep "inet " | grep -v 127.0.0.1
-const LOCAL_IP = '10.249.42.16';
+const LOCAL_IP = '10.249.110.39';
+
 
 export const CONFIG = {
   MATCH_RADIUS: 50, // 50m

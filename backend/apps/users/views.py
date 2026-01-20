@@ -1308,6 +1308,22 @@ def update_consent(request):
                 latitude = float(user_location.latitude)
                 longitude = float(user_location.longitude)
 
+                # 기존 매칭 삭제 (재생성 전에 삭제하여 양쪽 모두 새 매칭으로 간주되도록)
+                existing_matches = Match.objects.filter(
+                    Q(user1=user_profile) | Q(user2=user_profile)
+                ).select_related('user1', 'user2')
+                
+                deleted_matches_info = []
+                for existing_match in existing_matches:
+                    other_user = existing_match.user2 if existing_match.user1 == user_profile else existing_match.user1
+                    deleted_matches_info.append(f'{user_profile.user.username} ↔ {other_user.user.username}')
+                    existing_match.delete()
+                
+                if deleted_matches_info:
+                    print(f'🗑️ 기존 매칭 삭제 (재생성 준비): {len(deleted_matches_info)}개')
+                    for info in deleted_matches_info:
+                        print(f'   - {info}')
+
                 # 반경 0.01km = 10m
                 matchable_users = find_matchable_users(
                     user_profile,
@@ -1316,23 +1332,10 @@ def update_consent(request):
                     radius_km=0.01
                 )
 
-                # 기존 매칭 사용자 ID 수집 (중복 방지)
-                existing_matches = Match.objects.filter(
-                    Q(user1=user_profile) | Q(user2=user_profile)
-                ).select_related('user1', 'user2')
-                existing_user_ids = {
-                    (m.user2.id if m.user1 == user_profile else m.user1.id)
-                    for m in existing_matches
-                }
-
                 new_matches_count = 0
 
                 for matchable in matchable_users:
                     candidate_user = matchable['user']
-
-                    # 이미 매칭된 사용자면 스킵
-                    if candidate_user.id in existing_user_ids:
-                        continue
 
                     # 위치 정보 없는 후보는 스킵
                     if not hasattr(candidate_user, 'location') or not candidate_user.location:
@@ -1358,6 +1361,7 @@ def update_consent(request):
                                 }
                             )
                             new_matches_count += 1
+                            print(f'✅ 새 매칭 생성: {user_profile.user.username} ↔ {candidate_user.user.username}')
                     except Exception as e:
                         print(f'⚠️ 매칭 재생성 실패: {str(e)}')
                         continue

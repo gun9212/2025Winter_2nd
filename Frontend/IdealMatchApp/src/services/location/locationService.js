@@ -1,5 +1,5 @@
 import Geolocation from '@react-native-community/geolocation';
-import { Platform, PermissionsAndroid, Alert } from 'react-native';
+import { Platform, PermissionsAndroid, Alert, AppState } from 'react-native';
 import { USE_MOCK_LOCATION, DEFAULT_TEST_LOCATION } from '../../constants/config';
 
 export class LocationService {
@@ -141,6 +141,21 @@ export class LocationService {
     }
 
     // 실제 GPS 사용
+    // iOS 백그라운드 위치 업데이트를 위해 설정 최적화
+    const watchOptions = {
+      enableHighAccuracy: true,
+      distanceFilter: 0, // 거리 필터 제거: 위치가 조금이라도 변경되면 업데이트
+      interval: 5000, // 5초마다 체크
+      fastestInterval: 5000, // 최소 5초 간격
+    };
+    
+    // iOS 백그라운드 위치 업데이트를 위한 추가 설정
+    if (Platform.OS === 'ios') {
+      // iOS에서는 백그라운드 위치 업데이트를 위해 추가 옵션 필요 없음
+      // Info.plist에 UIBackgroundModes에 'location'이 설정되어 있으면 자동으로 작동
+      console.log('📱 iOS watchLocation 시작 (백그라운드 위치 업데이트 활성화)');
+    }
+    
     this.watchId = Geolocation.watchPosition(
       (position) => {
         const location = {
@@ -149,19 +164,17 @@ export class LocationService {
           accuracy: position.coords.accuracy,
           timestamp: position.timestamp,
         };
-        console.log('📍 위치 업데이트:', location);
+        console.log('📍 위치 업데이트 (watchLocation):', location);
         callback(location);
       },
       (error) => {
         console.error('❌ 위치 감지 오류:', error);
-        Alert.alert('위치 오류', '위치 정보를 가져올 수 없습니다.');
+        // 백그라운드에서는 Alert를 표시하지 않음 (사용자 경험 저하)
+        if (AppState.currentState === 'active') {
+          Alert.alert('위치 오류', '위치 정보를 가져올 수 없습니다.');
+        }
       },
-      {
-        enableHighAccuracy: true,
-        distanceFilter: 10, // 10m 이상 이동 시에만 업데이트
-        interval: 10000, // 10초마다 체크 (Android)
-        fastestInterval: 5000, // 최소 5초 간격 (Android)
-      }
+      watchOptions
     );
 
     console.log('🎯 위치 감지 시작 (watchId:', this.watchId, ')');

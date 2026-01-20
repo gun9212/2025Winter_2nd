@@ -287,7 +287,7 @@ PODS:
   - react-native-geolocation (3.4.0):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
-  - react-native-safe-area-context (5.6.2):
+  - react-native-safe-area-context (4.14.1):
     - React-Core
   - React-NativeModulesApple (0.72.6):
     - React-callinvoker
@@ -399,7 +399,7 @@ PODS:
   - RNCMaskedView (0.3.2):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
-  - RNGestureHandler (2.30.0):
+  - RNGestureHandler (2.16.2):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
   - RNNotifee (9.1.8):
@@ -413,7 +413,7 @@ PODS:
   - RNScreens (3.27.0):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
-  - RNSVG (15.15.1):
+  - RNSVG (15.7.1):
     - React-Core
   - RNVectorIcons (10.3.0):
     - RCT-Folly (= 2021.07.22.00)
@@ -579,7 +579,7 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
 SPEC CHECKSUMS:
-  boost: d9857fa6515e4f9985f29bf6f2e40cb03f54f859
+  boost: 2ef7cbe1ea5628027081b2f904ed05e132afeed2
   BVLinearGradient: cb006ba232a1f3e4f341bb62c42d1098c284da70
   DoubleConversion: 5189b271737e1565bdce30deb4a08d647e3f5f54
   FBLazyVector: 748c0ef74f2bf4b36cfcccf37916806940a64c32
@@ -602,7 +602,7 @@ SPEC CHECKSUMS:
   React-jsinspector: 194e32c6aab382d88713ad3dd0025c5f5c4ee072
   React-logger: 39440454dfd719978689203a9d18b94e98de09eb
   react-native-geolocation: 9e89c8dbec96c6671da28da6c20f13a0a2a1785f
-  react-native-safe-area-context: 6c8805194166a9d6b3e53ba69ca76756c9bfb052
+  react-native-safe-area-context: 758e894ca5a9bd1868d2a9cfbca7326a2b6bf9dc
   React-NativeModulesApple: 3369884d84790e4a46be33fe7f141245ea55d585
   React-perflogger: e3596db7e753f51766bceadc061936ef1472edc3
   React-RCTActionSheet: 17ab132c748b4471012abbcdcf5befe860660485
@@ -622,11 +622,11 @@ SPEC CHECKSUMS:
   ReactCommon: 3a7c359a28c6973c304fb1b0152b096b195dd5fc
   RNCAsyncStorage: b44e8a4e798c3e1f56bffccd0f591f674fb9198f
   RNCMaskedView: d261a7d0cc486eed758aad47afc406eff06a5b3c
-  RNGestureHandler: 1141f6753c7cd749a20bbd46d2010968dffe3fc1
+  RNGestureHandler: 5ae428abcc1bf7d89b42ee17a1d5a53e38de7acd
   RNNotifee: 5e3b271e8ea7456a36eec994085543c9adca9168
   RNReactNativeHapticFeedback: dda7ccd00a9b9e16b2c2e2282147ab5300344482
   RNScreens: c04e015e917ce64d0983974d8efb8fa1dc1ddc56
-  RNSVG: 843cb94bebafcbd6e86842ac76d2c5d4836ba0a0
+  RNSVG: 38b927ba26d717c85522fbf9a04b87dcd2d8227a
   RNVectorIcons: 2a7ec3ea0e8af048e16f8d30bfaedc21d649c502
   SocketRocket: f32cd54efbe0f095c4d7594881e52619cfe80b17
   Yoga: b76f1acfda8212aa16b7e26bcce3983230c82603
