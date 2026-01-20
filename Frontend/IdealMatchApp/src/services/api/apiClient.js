@@ -324,6 +324,17 @@ class ApiClient {
           data: data,
         });
         
+        // 403 Forbidden - 이메일 인증 미완료
+        if (response.status === 403 && data && data.email_verified === false) {
+          console.warn('⚠️ 이메일 인증이 완료되지 않음');
+          const error = new Error(data.message || data.error || '이메일 인증이 완료되지 않았습니다.');
+          error.status = 403;
+          error.email_verified = false;
+          error.email = data.email;
+          error.requires_email_verification = data.requires_email_verification || true;
+          throw error;
+        }
+        
         // 401 Unauthorized - 토큰 만료 또는 인증 실패
         if (response.status === 401 && requireAuth) {
           // 시나리오 1: 자동 갱신
@@ -754,7 +765,20 @@ class ApiClient {
         hasAccessToken: !!response.access_token,
         hasRefreshToken: !!response.refresh_token,
         user: response.user,
+        email_verified: response.user?.email_verified,
       });
+
+      // 이메일 인증 여부 확인
+      if (response.user && response.user.email_verified === false) {
+        console.warn('⚠️ 이메일 인증이 완료되지 않음');
+        return {
+          success: false,
+          error: '이메일 인증이 완료되지 않았습니다.',
+          message: '이메일 인증을 완료한 후 서비스를 이용할 수 있습니다.',
+          email_verified: false,
+          email: response.user?.email,
+        };
+      }
 
       // 토큰 저장
       if (response.access_token && response.refresh_token) {
@@ -771,6 +795,19 @@ class ApiClient {
       };
     } catch (error) {
       console.error('❌ 로그인 실패:', error);
+      
+      // 403 Forbidden 에러이고 이메일 인증 관련인 경우
+      if (error.status === 403 && error.email_verified === false) {
+        return {
+          success: false,
+          error: '이메일 인증이 완료되지 않았습니다.',
+          message: '이메일 인증을 완료한 후 서비스를 이용할 수 있습니다.',
+          email_verified: false,
+          email: error.email,
+          requires_email_verification: error.requires_email_verification || true,
+        };
+      }
+      
       return {
         success: false,
         error: error.message,
@@ -1148,11 +1185,24 @@ class ApiClient {
         success: true,
         message: response.message || '매칭 동의가 업데이트되었습니다.',
         data: response.data || response,
+        // email_verified 정보도 함께 전달 (이메일 인증 미완료 시 False로 강제 설정된 경우)
+        email_verified: response.email_verified,
       };
     } catch (error) {
       console.error('❌ 매칭 동의 업데이트 실패:', error);
       console.error('   에러 상세:', error.message);
       console.error('   API URL:', `${this.baseURL}/users/consent/`);
+      
+      // 403 Forbidden 에러이고 이메일 인증 관련인 경우
+      if (error.status === 403 && error.email_verified === false) {
+        return {
+          success: false,
+          error: '이메일 인증이 완료되지 않았습니다.',
+          message: '매칭 동의를 변경하려면 먼저 이메일 인증을 완료해주세요.',
+          email_verified: false,
+        };
+      }
+      
       return {
         success: false,
         error: error.message,

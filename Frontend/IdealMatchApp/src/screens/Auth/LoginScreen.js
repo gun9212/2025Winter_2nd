@@ -37,7 +37,38 @@ const LoginScreen = ({ navigation, onLogin }) => {
     try {
       await onLogin(userId.trim(), password);
     } catch (error) {
-      Alert.alert('오류', error.message || '로그인 중 오류가 발생했습니다.');
+      // 이메일 인증 미완료인 경우
+      if (error.email_verified === false && error.requires_email_verification) {
+        // 이메일 인증 화면으로 이동 (이메일 전달)
+        navigation.navigate('Signup', { 
+          email: error.email,
+          isEmailVerification: true, // 이메일 인증 모드 플래그
+        });
+      } else if (error.email_verified === false) {
+        Alert.alert(
+          '이메일 인증 필요',
+          '서비스를 이용하려면 이메일 인증을 완료해주세요.\n\n이메일을 확인하여 인증번호를 입력해주세요.',
+          [
+            {
+              text: '확인',
+              style: 'default',
+            },
+            {
+              text: '인증하기',
+              style: 'default',
+              onPress: () => {
+                // 이메일 인증 화면으로 이동 (이메일 전달)
+                navigation.navigate('Signup', { 
+                  email: error.email,
+                  isEmailVerification: true,
+                });
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('오류', error.message || '로그인 중 오류가 발생했습니다.');
+      }
     } finally {
       setLoading(false);
     }

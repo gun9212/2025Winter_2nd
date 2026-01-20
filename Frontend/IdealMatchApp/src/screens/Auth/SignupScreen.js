@@ -17,11 +17,15 @@ import { COLORS } from '../../constants';
 
 const LOGO_IMAGE = require('../../images/login_logo.png');
 
-const SignupScreen = ({ navigation, onSignup }) => {
+const SignupScreen = ({ navigation, onSignup, route }) => {
+  // route params에서 이메일과 이메일 인증 모드 확인
+  const isEmailVerification = route?.params?.isEmailVerification || false;
+  const initialEmail = route?.params?.email || '';
+  
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(initialEmail);
   const [verificationCode, setVerificationCode] = useState('');
   const [codeSent, setCodeSent] = useState(false);
   const [codeVerified, setCodeVerified] = useState(false);
@@ -30,6 +34,25 @@ const SignupScreen = ({ navigation, onSignup }) => {
   const [sendingCode, setSendingCode] = useState(false);
   const [timer, setTimer] = useState(0); // 타이머 (초 단위)
   const timerRef = useRef(null);
+
+  // route params에서 이메일을 받아서 설정
+  useEffect(() => {
+    if (route?.params?.email) {
+      setEmail(route.params.email);
+    }
+  }, [route?.params?.email]);
+
+  // 이메일 인증 모드이고 이메일이 설정되면 자동으로 인증번호 발송
+  useEffect(() => {
+    if (isEmailVerification && email && !codeSent && !sendingCode) {
+      // 약간의 지연 후 자동 발송 (컴포넌트 마운트 후)
+      const timer = setTimeout(() => {
+        handleSendCode();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEmailVerification, email]);
 
   // 타이머 카운트다운 효과
   useEffect(() => {
@@ -147,6 +170,22 @@ const SignupScreen = ({ navigation, onSignup }) => {
       
       setCodeVerified(true);
       setVerificationCode(codeToVerify); // 입력된 코드 저장
+      
+      // 이메일 인증 모드인 경우 인증 완료 후 로그인 화면으로 돌아가기
+      if (isEmailVerification) {
+        Alert.alert(
+          '인증 완료',
+          '이메일 인증이 완료되었습니다. 로그인 화면으로 돌아가서 다시 로그인해주세요.',
+          [
+            {
+              text: '확인',
+              onPress: () => {
+                navigation.navigate('Login');
+              },
+            },
+          ]
+        );
+      }
       // 인증 완료 알림은 조용히 처리 (자동 인증이므로)
     } catch (error) {
       Alert.alert('오류', error.message || '인증번호 확인 중 오류가 발생했습니다.');
@@ -250,50 +289,54 @@ const SignupScreen = ({ navigation, onSignup }) => {
               resizeMode="contain"
             />
           </View>
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Start your journey</Text>
+          <Text style={styles.title}>{isEmailVerification ? '이메일 인증' : 'Create Account'}</Text>
+          <Text style={styles.subtitle}>{isEmailVerification ? '이메일 인증을 완료해주세요' : 'Start your journey'}</Text>
         </View>
 
-        {/* 회원가입 폼 */}
+        {/* 회원가입 폼 또는 이메일 인증 폼 */}
         <View style={styles.form}>
-          {/* ID or Email */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>ID OR EMAIL</Text>
-            <TextInput
-              style={styles.input}
-              value={userId}
-              onChangeText={setUserId}
-              placeholder="name@example.com"
-              placeholderTextColor="#CBD5E1"
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              textAlign="center"
-            />
-          </View>
-
-          {/* Password */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>PASSWORD</Text>
-            <View style={styles.passwordContainer}>
+          {/* ID or Email - 이메일 인증 모드일 때는 숨김 */}
+          {!isEmailVerification && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>ID OR EMAIL</Text>
               <TextInput
                 style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
+                value={userId}
+                onChangeText={setUserId}
+                placeholder="name@example.com"
                 placeholderTextColor="#CBD5E1"
-                secureTextEntry={!showPassword}
                 autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
                 textAlign="center"
               />
-              <TouchableOpacity
-                style={styles.eyeButton}
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                <Text style={styles.eyeIcon}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
-              </TouchableOpacity>
             </View>
-          </View>
+          )}
+
+          {/* Password - 이메일 인증 모드일 때는 숨김 */}
+          {!isEmailVerification && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>PASSWORD</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.input}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="••••••••"
+                  placeholderTextColor="#CBD5E1"
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  textAlign="center"
+                />
+                <TouchableOpacity
+                  style={styles.eyeButton}
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Text style={styles.eyeIcon}>{showPassword ? '👁️' : '👁️‍🗨️'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           {/* Email with Send Code Button */}
           <View style={styles.inputGroup}>
@@ -309,6 +352,7 @@ const SignupScreen = ({ navigation, onSignup }) => {
                 autoCapitalize="none"
                 autoCorrect={false}
                 textAlign="center"
+                editable={!isEmailVerification} // 이메일 인증 모드일 때는 읽기 전용
               />
               <TouchableOpacity
                 style={[styles.sendCodeButton, (sendingCode || !email) && styles.sendCodeButtonDisabled]}
@@ -377,22 +421,24 @@ const SignupScreen = ({ navigation, onSignup }) => {
             </View>
           )}
 
-          {/* Join Button */}
-          <TouchableOpacity
-            style={[styles.joinButton, loading && styles.joinButtonDisabled]}
-            onPress={handleSignup}
-            disabled={loading || !codeVerified}
-            activeOpacity={0.9}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <>
-                <Text style={styles.joinButtonText}>Join Wwoong</Text>
-                <Text style={styles.celebrationIcon}>🎉</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          {/* Join Button - 이메일 인증 모드일 때는 숨김 */}
+          {!isEmailVerification && (
+            <TouchableOpacity
+              style={[styles.joinButton, loading && styles.joinButtonDisabled]}
+              onPress={handleSignup}
+              disabled={loading || !codeVerified}
+              activeOpacity={0.9}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.joinButtonText}>Join Wwoong</Text>
+                  <Text style={styles.celebrationIcon}>🎉</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
 
           {/* Terms & Privacy */}
           <Text style={styles.termsText}>

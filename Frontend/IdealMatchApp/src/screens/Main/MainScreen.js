@@ -102,25 +102,44 @@ const MainScreen = ({ navigation }) => {
       if (!isLoggedIn) return;
       
       try {
-        // userProfile에 matching_consent가 있으면 먼저 사용
-        if (userProfile && userProfile.matching_consent !== undefined) {
-          setMatchingConsent(userProfile.matching_consent);
-          console.log('✅ 매칭 동의 상태 프로필에서 불러오기:', userProfile.matching_consent);
-          return;
-        }
-        
-        // 없으면 서버에서 명시적으로 조회
-        console.log('📥 서버에서 매칭 동의 상태 조회 중...');
+        // 서버에서 프로필 조회 (email_verified 정보 포함)
+        console.log('📥 서버에서 프로필 및 매칭 동의 상태 조회 중...');
         const profileResult = await apiClient.getProfile();
+        console.log('📥 프로필 조회 결과:', {
+          success: profileResult.success,
+          hasData: !!profileResult.data,
+          emailVerified: profileResult.data?.email_verified,
+          matchingConsent: profileResult.data?.matching_consent,
+          fullData: profileResult.data
+        });
+        
         if (profileResult.success && profileResult.data) {
+          const emailVerified = profileResult.data.email_verified;
           const consent = profileResult.data.matching_consent ?? false;
-          setMatchingConsent(consent);
-          console.log('✅ 매칭 동의 상태 서버에서 불러오기:', consent);
+          
+          console.log('🔍 이메일 인증 상태 확인:', {
+            emailVerified,
+            emailVerifiedType: typeof emailVerified,
+            emailVerifiedStrictTrue: emailVerified === true,
+            emailVerifiedNotStrictTrue: emailVerified !== true
+          });
+          
+          // email_verified가 false이거나 undefined인 경우에만 matching_consent를 false로 강제 설정
+          if (emailVerified !== true) {
+            console.log('⚠️ 이메일 인증 미완료 - 매칭 동의를 OFF로 강제 설정', { emailVerified, consent });
+            setMatchingConsent(false);
+          } else {
+            // 이메일 인증 완료된 경우 서버의 matching_consent 값 사용 (정상 토글 가능)
+            setMatchingConsent(consent);
+            console.log('✅ 매칭 동의 상태 서버에서 불러오기:', consent, '(이메일 인증 완료)');
+          }
+        } else {
+          // 프로필 조회 실패 시 기존 상태 유지 (강제로 false로 설정하지 않음)
+          console.log('⚠️ 프로필 조회 실패 - 기존 상태 유지', profileResult);
         }
       } catch (error) {
         console.error('❌ 매칭 동의 상태 조회 실패:', error);
-        // 에러 발생 시 기본값 false 사용
-        setMatchingConsent(false);
+        // 에러 발생 시 기존 상태 유지 (강제로 false로 설정하지 않음)
       }
     };
 
@@ -648,6 +667,35 @@ const MainScreen = ({ navigation }) => {
       return;
     }
     
+    // 이메일 인증 미완료 체크 (프론트엔드에서 먼저 체크)
+    // 프로필에서 email_verified 정보 확인
+    try {
+      const profileResult = await apiClient.getProfile();
+      if (profileResult.success && profileResult.data) {
+        const emailVerified = profileResult.data.email_verified;
+        // email_verified가 false이거나 undefined인 경우 아무 동작도 하지 않음
+        // (undefined는 안전을 위해 false로 간주)
+        if (emailVerified !== true) {
+          console.log('⚠️ 이메일 인증 미완료 - 매칭 동의 변경 불가', { emailVerified });
+          // UI를 OFF 상태로 강제 설정
+          setMatchingConsent(false);
+          return;
+        }
+      } else {
+        // 프로필 조회 실패 또는 데이터 없음 - 안전을 위해 진행하지 않음
+        console.log('⚠️ 프로필 조회 실패 또는 데이터 없음 - 매칭 동의 변경 불가');
+        // UI를 OFF 상태로 강제 설정
+        setMatchingConsent(false);
+        return;
+      }
+    } catch (error) {
+      console.error('❌ 프로필 조회 실패:', error);
+      // 프로필 조회 실패 시에도 진행하지 않음 (안전을 위해)
+      // UI를 OFF 상태로 강제 설정
+      setMatchingConsent(false);
+      return;
+    }
+    
     // 현재 상태의 반대로 설정
     const newConsentState = !matchingConsent;
     
@@ -659,13 +707,25 @@ const MainScreen = ({ navigation }) => {
       const result = await apiClient.updateConsent(newConsentState);
       
       if (result.success) {
-        // 성공 시 state 업데이트
-        setMatchingConsent(newConsentState);
-        console.log(`✅ 매칭 동의 ${newConsentState ? '활성화' : '비활성화'} 완료`);
+        // 백엔드에서 반환한 실제 matching_consent 값 사용
+        // (email_verified = False인 경우 False로 강제 설정될 수 있음)
+        const actualConsentState = result.data?.matching_consent ?? newConsentState;
         
+        // 성공 시 state 업데이트 (실제 서버 값 사용)
+        setMatchingConsent(actualConsentState);
+        console.log(`✅ 매칭 동의 ${actualConsentState ? '활성화' : '비활성화'} 완료`);
+        
+        // 이메일 인증 미완료로 인해 False로 강제 설정된 경우 알림
+        if (result.email_verified === false && newConsentState === true && actualConsentState === false) {
+          Alert.alert(
+            '이메일 인증 필요',
+            '매칭 동의를 활성화하려면 먼저 이메일 인증을 완료해주세요.',
+            [{ text: '확인' }]
+          );
+        }
 
         // 매칭 동의 상태에 따라 매칭 시작/중지
-        if (newConsentState) {
+        if (actualConsentState) {
           // 매칭 동의 ON: 매칭 시작
           console.log('🚀 매칭 동의 ON - 매칭 시작');
           // 알림 기록 초기화 (비활성화 후 활성화 시 알림이 오도록)
@@ -710,11 +770,41 @@ const MainScreen = ({ navigation }) => {
         hapticService.heartbeat();
       } else {
         console.error('❌ 매칭 동의 업데이트 실패:', result.error);
-        Alert.alert('오류', result.error || '매칭 동의 상태를 변경할 수 없습니다.');
+        
+        // 이메일 인증 미완료인 경우
+        if (result.email_verified === false) {
+          Alert.alert(
+            '이메일 인증 필요',
+            '매칭 동의를 변경하려면 먼저 이메일 인증을 완료해주세요.',
+            [
+              {
+                text: '확인',
+                style: 'default',
+              },
+            ]
+          );
+        } else {
+          Alert.alert('오류', result.error || result.message || '매칭 동의 상태를 변경할 수 없습니다.');
+        }
       }
     } catch (error) {
       console.error('❌ 매칭 동의 업데이트 오류:', error);
-      Alert.alert('오류', error.message || '매칭 동의 상태를 변경할 수 없습니다.');
+      
+      // 이메일 인증 미완료인 경우
+      if (error.email_verified === false) {
+        Alert.alert(
+          '이메일 인증 필요',
+          '매칭 동의를 변경하려면 먼저 이메일 인증을 완료해주세요.',
+          [
+            {
+              text: '확인',
+              style: 'default',
+            },
+          ]
+        );
+      } else {
+        Alert.alert('오류', error.message || '매칭 동의 상태를 변경할 수 없습니다.');
+      }
     } finally {
       setIsUpdatingConsent(false);
     }

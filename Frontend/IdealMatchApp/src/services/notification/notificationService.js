@@ -36,7 +36,7 @@ export class NotificationService {
    * @param {Object} match - 매칭 정보 (선택사항)
    */
   static async showMatchNotification(match) {
-    console.log('🔔 매칭 알림 표시 시작');
+    console.log('🔔 매칭 알림 표시 (백그라운드/포그라운드 모두 지원)');
     console.log('📊 매칭 정보:', match);
 
     try {
@@ -53,28 +53,27 @@ export class NotificationService {
       // Android 채널 생성
       await this.createChannel();
 
-      // 진동 (Instagram 스타일)
-      Vibration.vibrate([0, 100, 50, 100]);
+      // 진동 (Instagram 스타일) - 포그라운드에서만 작동
+      try {
+        Vibration.vibrate([0, 100, 50, 100]);
+      } catch (vibError) {
+        console.log('⚠️ 진동 실패 (백그라운드에서는 제한될 수 있음):', vibError);
+      }
 
-      // 시스템 알림 표시
+      // 시스템 알림 표시 (백그라운드/포그라운드 모두 지원)
       await notifee.displayNotification({
         title: '💝 매칭 성공!',
         body: '주변에서 이상형을 발견했습니다! 두근두근 💓',
         ios: {
           sound: 'default',
+          // 포그라운드에서 알림 표시 설정
           foregroundPresentationOptions: {
             alert: true,
             badge: true,
             sound: true,
           },
-          // 백그라운드 알림을 위한 설정 추가
-          backgroundPresentationOptions: {
-            alert: true,
-            badge: true,
-            sound: true,
-          },
-          critical: true,
-          criticalVolume: 1.0,
+          // 백그라운드에서도 알림이 표시되도록 설정
+          // notifee는 기본적으로 백그라운드에서도 알림을 표시합니다
         },
         android: {
           channelId: 'match-notifications',
@@ -88,11 +87,15 @@ export class NotificationService {
         },
       });
 
-      console.log('✅ 시스템 알림 표시 완료');
+      console.log('✅ 시스템 알림 표시 완료 (백그라운드/포그라운드 모두 지원)');
     } catch (error) {
       console.error('❌ 알림 표시 실패:', error);
-      // 실패 시 Alert로 대체
-      this.showAlertNotification();
+      // 실패 시 Alert로 대체 (백그라운드에서는 작동하지 않을 수 있음)
+      try {
+        this.showAlertNotification();
+      } catch (alertError) {
+        console.error('❌ Alert 표시도 실패 (백그라운드에서는 정상):', alertError);
+      }
     }
   }
 

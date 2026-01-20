@@ -112,6 +112,14 @@ export const AuthProvider = ({ children }) => {
       const result = await apiClient.login(userId, password);
       
       if (!result.success) {
+        // 이메일 인증 미완료인 경우
+        if (result.email_verified === false) {
+          const error = new Error(result.message || result.error || '이메일 인증이 완료되지 않았습니다.');
+          error.email_verified = false;
+          error.email = result.email;
+          error.requires_email_verification = result.requires_email_verification || true;
+          throw error;
+        }
         throw new Error(result.message || result.error || '로그인에 실패했습니다.');
       }
       

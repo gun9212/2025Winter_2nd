@@ -413,7 +413,7 @@
 					"-lc++",
 					"$(inherited)",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.delaykimm.IdealMatchAppTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/IdealMatchApp.app/IdealMatchApp";
 			};
@@ -437,7 +437,7 @@
 					"-lc++",
 					"$(inherited)",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.delaykimm.IdealMatchAppTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/IdealMatchApp.app/IdealMatchApp";
 			};
@@ -452,7 +452,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = MP4DY2SY77;
+				DEVELOPMENT_TEAM = LG9676X4DP;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = IdealMatchApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -465,8 +465,8 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.--PRODUCT-NAME-rfc1034identifier--delaykimm";
-				"PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = "org.reactjs.native.example.IdealMatchApp-RealIphone";
+				PRODUCT_BUNDLE_IDENTIFIER = com.delaykimm.IdealMatchApp;
+				"PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = com.delaykimm.IdealMatchApp;
 				PRODUCT_NAME = IdealMatchApp;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -484,7 +484,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = MP4DY2SY77;
+				DEVELOPMENT_TEAM = LG9676X4DP;
 				INFOPLIST_FILE = IdealMatchApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -496,8 +496,8 @@
 					"-ObjC",
 					"-lc++",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.--PRODUCT-NAME-rfc1034identifier--delaykimm";
-				"PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = "org.reactjs.native.example.IdealMatchApp-RealIphone";
+				PRODUCT_BUNDLE_IDENTIFIER = com.delaykimm.IdealMatchApp;
+				"PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = com.delaykimm.IdealMatchApp;
 				PRODUCT_NAME = IdealMatchApp;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_VERSION = 5.0;
