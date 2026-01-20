@@ -173,7 +173,7 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 # 이메일 설정
-EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')  # 개발: 콘솔, 프로덕션: SMTP
+EMAIL_BACKEND = config('EMAIL_BACKEND', default='django_ses.SESBackend')  # 개발: 콘솔, 프로덕션: SMTP django.core.mail.backends.console.EmailBackend
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
 EMAIL_PORT = config('EMAIL_PORT', default='587', cast=int)
 EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
@@ -183,7 +183,11 @@ DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@idealmatch.co
 
 # AWS SES 설정 (프로덕션 환경용)
 USE_AWS_SES = config('USE_AWS_SES', default=False, cast=bool)  # AWS SES 사용 여부
-AWS_SES_REGION = config('AWS_SES_REGION', default='ap-northeast-2')  # 서울 리전
+# AWS SES 리전: 서울 리전 (ap-northeast-2)로 고정
+# .env 파일에 AWS_SES_REGION이 설정되어 있으면 그 값을 사용, 없으면 ap-northeast-2 사용
+AWS_SES_REGION = config('AWS_SES_REGION', default='ap-northeast-2')
+# django_ses가 사용하는 리전 설정 (필수!)
+AWS_SES_REGION_NAME = AWS_SES_REGION  # django_ses가 이 설정을 사용함
 AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='')
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='')
 

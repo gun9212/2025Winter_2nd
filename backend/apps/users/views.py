@@ -333,19 +333,56 @@ IdealMatch 팀
                 # AWS 자격 증명 설정
                 # EC2에서 IAM 역할을 사용하는 경우 자격 증명 불필요
                 # 로컬 테스트나 명시적 자격 증명이 필요한 경우에만 사용
-                ses_config = {
-                    'region_name': config('AWS_SES_REGION', default='ap-northeast-2'),
-                }
+                # 리전을 강제로 서울(ap-northeast-2)로 설정
+                ses_region = 'ap-northeast-2'  # 무조건 서울 리전 사용
                 
-                # Access Key가 설정되어 있으면 사용, 없으면 IAM 역할 사용
-                aws_access_key = config('AWS_ACCESS_KEY_ID', default='')
-                aws_secret_key = config('AWS_SECRET_ACCESS_KEY', default='')
+                # boto3를 완전히 새로운 세션으로 생성하여 기본 설정 무시
+                import boto3
+                import os
                 
-                if aws_access_key and aws_secret_key:
-                    ses_config['aws_access_key_id'] = aws_access_key
-                    ses_config['aws_secret_access_key'] = aws_secret_key
+                # 환경 변수로 리전 강제 설정 (boto3가 이를 우선시함)
+                original_region = os.environ.get('AWS_DEFAULT_REGION')
+                os.environ['AWS_DEFAULT_REGION'] = ses_region
+                os.environ['AWS_REGION'] = ses_region
                 
-                ses_client = boto3.client('ses', **ses_config)
+                try:
+                    # Access Key가 설정되어 있으면 사용, 없으면 IAM 역할 사용
+                    aws_access_key = config('AWS_ACCESS_KEY_ID', default='')
+                    aws_secret_key = config('AWS_SECRET_ACCESS_KEY', default='')
+                    
+                    if aws_access_key and aws_secret_key:
+                        # 자격 증명이 있으면 Session에 설정
+                        session = boto3.Session(
+                            region_name=ses_region,
+                            aws_access_key_id=aws_access_key,
+                            aws_secret_access_key=aws_secret_key
+                        )
+                    else:
+                        # IAM 역할 사용 시에도 리전 명시
+                        session = boto3.Session(region_name=ses_region)
+                    
+                    # 클라이언트 생성 시 리전과 엔드포인트 URL을 명시적으로 설정
+                    # 엔드포인트 URL을 명시하면 리전이 확실히 적용됨
+                    endpoint_url = f'https://email.{ses_region}.amazonaws.com'
+                    ses_client = session.client(
+                        'ses',
+                        region_name=ses_region,
+                        endpoint_url=endpoint_url
+                    )
+                    
+                    # 실제 사용되는 리전 확인
+                    actual_region = ses_client.meta.region_name
+                    print(f"📍 AWS SES 리전 설정: {ses_region} (실제 사용 리전: {actual_region}, 엔드포인트: {endpoint_url})")  # 디버깅용
+                    
+                    if actual_region != 'ap-northeast-2':
+                        print(f"⚠️ 경고: 리전이 {actual_region}으로 설정되어 있습니다. ap-northeast-2로 변경이 필요합니다.")
+                finally:
+                    # 환경 변수 복원
+                    if original_region:
+                        os.environ['AWS_DEFAULT_REGION'] = original_region
+                    else:
+                        os.environ.pop('AWS_DEFAULT_REGION', None)
+                    os.environ.pop('AWS_REGION', None)
                 
                 # 이메일 발송
                 response = ses_client.send_email(
@@ -1476,18 +1513,35 @@ IdealMatch 팀
         elif use_aws_ses:
             # AWS SES 사용 (프로덕션 환경)
             try:
-                ses_config = {
-                    'region_name': config('AWS_SES_REGION', default='ap-northeast-2'),
-                }
+                # 리전을 강제로 서울(ap-northeast-2)로 설정
+                ses_region = 'ap-northeast-2'  # 무조건 서울 리전 사용
+                
+                # boto3 Session을 사용하여 리전을 명시적으로 설정
+                import boto3
                 
                 aws_access_key = config('AWS_ACCESS_KEY_ID', default='')
                 aws_secret_key = config('AWS_SECRET_ACCESS_KEY', default='')
                 
                 if aws_access_key and aws_secret_key:
-                    ses_config['aws_access_key_id'] = aws_access_key
-                    ses_config['aws_secret_access_key'] = aws_secret_key
+                    # 자격 증명이 있으면 Session에 설정
+                    session = boto3.Session(
+                        region_name=ses_region,
+                        aws_access_key_id=aws_access_key,
+                        aws_secret_access_key=aws_secret_key
+                    )
+                else:
+                    # IAM 역할 사용 시에도 리전 명시
+                    session = boto3.Session(region_name=ses_region)
                 
-                ses_client = boto3.client('ses', **ses_config)
+                # 클라이언트 생성 시에도 리전을 명시적으로 전달
+                ses_client = session.client('ses', region_name=ses_region)
+                
+                # 실제 사용되는 리전 확인
+                actual_region = ses_client.meta.region_name
+                print(f"📍 AWS SES 리전 설정: {ses_region} (실제 사용 리전: {actual_region})")  # 디버깅용
+                
+                if actual_region != 'ap-northeast-2':
+                    print(f"⚠️ 경고: 리전이 {actual_region}으로 설정되어 있습니다. ap-northeast-2로 변경이 필요합니다.")
                 
                 response = ses_client.send_email(
                     Source=settings.DEFAULT_FROM_EMAIL,
@@ -1525,7 +1579,7 @@ IdealMatch 팀
                         'error': '이메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요.'
                     }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         else:
-            # 일반 SMTP 사용
+            # 일반 SMTP 사용 (Gmail 등)
             send_mail(
                 subject,
                 message,
