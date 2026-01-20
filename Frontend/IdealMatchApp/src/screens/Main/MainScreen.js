@@ -356,6 +356,11 @@ const MainScreen = ({ navigation }) => {
         clearInterval(backgroundIntervalRef.current);
         backgroundIntervalRef.current = null;
       }
+      if (backgroundWatchIdRef.current !== null) {
+        locationService.stopWatching(backgroundWatchIdRef.current);
+        backgroundWatchIdRef.current = null;
+        console.log('🛑 백그라운드 위치 감지 중단 (포어그라운드 전환)');
+      }
       
       if (location) {
         // 포어그라운드 전환 시에도 위치를 서버에 전송
@@ -376,6 +381,8 @@ const MainScreen = ({ navigation }) => {
       
       // 백그라운드에서 주기적으로 서버 신호 확인 (setInterval, 5초 간격)
       startBackgroundMatching();
+      // 위치 변화 감지 시작 (백그라운드에서 깨워줄 수 있도록)
+      startBackgroundLocationWatch();
     }
 
     appState.current = nextAppState;
@@ -452,12 +459,30 @@ const MainScreen = ({ navigation }) => {
   };
 
   /**
-   * 백그라운드 위치 감지 (제거됨 - setInterval로 통일)
-   * 이제 startBackgroundMatching에서 setInterval로 처리
+   * 백그라운드 위치 감지
+   * - watchLocation을 사용해 OS가 위치 변화로 앱을 깨워줄 수 있도록 설정
+   * - 위치 변경 시마다 서버 전송 + 매칭 체크 + 활성 매칭 수 조회
    */
   const startBackgroundLocationWatch = () => {
-    // watchLocation 제거: setInterval로 통일
-    console.log('✅ 백그라운드 위치 감지는 setInterval로 처리됨 (5초 간격)');
+    // 이미 동작 중이면 재시작하지 않음
+    if (backgroundWatchIdRef.current !== null) {
+      console.log('⚠️ 백그라운드 위치 감지 이미 실행 중');
+      return;
+    }
+
+    console.log('🎯 백그라운드 위치 감지 시작 (watchLocation)');
+    const watchId = locationService.watchLocation(async (newLocation) => {
+      try {
+        setLocation(newLocation);
+        await sendLocationToServer(newLocation);
+        await searchMatchesDebounced(newLocation, true); // 위치 이벤트 시 강제 체크
+        await fetchActiveMatches(newLocation);
+      } catch (error) {
+        console.error('❌ 백그라운드 위치 감지 콜백 오류:', error);
+      }
+    });
+
+    backgroundWatchIdRef.current = watchId;
   };
 
   const startBackgroundMatching = () => {
@@ -541,7 +566,12 @@ const MainScreen = ({ navigation }) => {
             clearInterval(backgroundIntervalRef.current);
             backgroundIntervalRef.current = null;
           }
-          // watchLocation 제거됨 - setInterval만 사용하므로 정리 불필요
+          // 백그라운드 위치 감지 중단
+          if (backgroundWatchIdRef.current !== null) {
+            locationService.stopWatching(backgroundWatchIdRef.current);
+            backgroundWatchIdRef.current = null;
+            console.log('🛑 백그라운드 위치 감지 중단 (매칭 동의 OFF)');
+          }
           // 매칭 가능 인원 수 초기화
           setMatchableCount(0);
         }

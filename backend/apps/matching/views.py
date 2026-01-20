@@ -315,9 +315,23 @@ def match_check(request):
     
     if latest_match:
         serializer = MatchSerializer(latest_match)
+
+        # 새 매칭 여부 판단
+        is_newly_created = len(new_matches) > 0
+        is_recent_match = False
+
+        # 기존 매칭이지만 최근(5초 이내) 생성된 경우에도 새 매칭으로 간주하여 양쪽 모두 알림
+        if not is_newly_created:
+            time_since_match = timezone.now() - latest_match.matched_at
+            if time_since_match.total_seconds() <= 5:
+                is_recent_match = True
+                print(f'⏰ 최근 매칭 발견: 생성 후 {time_since_match.total_seconds():.1f}초 경과 - 새 매칭으로 처리')
+
+        has_new_match = is_newly_created or is_recent_match
+
         return Response({
             'success': True,
-            'has_new_match': len(new_matches) > 0,
+            'has_new_match': has_new_match,
             'new_matches_count': len(new_matches),
             'latest_match': serializer.data,
         }, status=status.HTTP_200_OK)
