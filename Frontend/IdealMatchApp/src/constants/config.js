@@ -1,14 +1,16 @@
 import { Platform } from 'react-native';
 
-// 시뮬레이터/실제 기기 구분
-// true: 시뮬레이터 사용 (127.0.0.1)
-// false: 실제 기기 사용 (Mac의 로컬 IP)
+// ✅ EC2 백엔드 (Nginx 80 프록시)
+// - 개발(실기기)에서도 EC2를 쓰고 싶으면 USE_EC2_API_IN_DEV=true
+// - 기본 API 경로는 /api 입니다.
+const EC2_API_BASE_URL = 'http://ec2-54-180-153-89.ap-northeast-2.compute.amazonaws.com/api';
+const USE_EC2_API_IN_DEV = true;
+
 const USE_SIMULATOR = false; // 실제 기기 테스트 시 false로 설정
 
 // Mac의 로컬 IP 주소 (실제 기기 테스트 시 사용)
 // 로컬 IP 확인: ifconfig | grep "inet " | grep -v 127.0.0.1
 const LOCAL_IP = '10.249.110.39';
-
 
 export const CONFIG = {
   MATCH_RADIUS: 50, // 50m
@@ -20,13 +22,15 @@ export const CONFIG = {
   // Android 에뮬레이터: 10.0.2.2 사용
   // 실제 기기: Mac의 로컬 IP 주소 사용 (예: 192.168.x.x)
   // 팀원 테스트: 같은 WiFi 네트워크에서 Mac의 로컬 IP 사용
-  API_BASE_URL: __DEV__ 
-    ? (Platform.OS === 'ios' 
-        ? (USE_SIMULATOR 
-            ? 'http://127.0.0.1:8000/api'  // iOS 시뮬레이터
-            : `http://${LOCAL_IP}:8000/api`)  // 실제 iOS 기기
-        : 'http://10.0.2.2:8000/api')  // Android 에뮬레이터
-    : 'https://your-production-api.com/api',  // 프로덕션
+  API_BASE_URL: __DEV__
+    ? (USE_EC2_API_IN_DEV
+        ? EC2_API_BASE_URL
+        : (Platform.OS === 'ios'
+            ? (USE_SIMULATOR
+                ? 'http://127.0.0.1:8000/api' // iOS 시뮬레이터
+                : `http://${LOCAL_IP}:8000/api`) // 실제 iOS 기기(로컬 서버)
+            : 'http://10.0.2.2:8000/api')) // Android 에뮬레이터(로컬 서버)
+    : EC2_API_BASE_URL, // 프로덕션(현재 EC2)
   // 테스트용 user_id (디버그 모드에서 사용)
   // 멀티 계정 테스트를 위해 필요 시 직접 숫자 ID를 넣어 특정 계정으로 강제 테스트하세요.
   // null로 설정하면 토큰이 없을 때 user_id를 사용하지 않음 (로그인 강제)

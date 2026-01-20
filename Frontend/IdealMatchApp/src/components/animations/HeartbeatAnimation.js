@@ -6,9 +6,16 @@ import { COLORS } from '../../constants';
 const HeartbeatAnimation = ({ isActive, size = 150 }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+  const loopRef = useRef(null);
 
   useEffect(() => {
     if (isActive) {
+      // 혹시 이전 루프가 남아있으면 중단 (중복 루프 방지)
+      if (loopRef.current) {
+        loopRef.current.stop();
+        loopRef.current = null;
+      }
+
       // 페이드 인
       Animated.timing(opacityAnim, {
         toValue: 1,
@@ -48,8 +55,15 @@ const HeartbeatAnimation = ({ isActive, size = 150 }) => {
         Animated.delay(300),
       ]);
 
-      Animated.loop(heartbeat).start();
+      loopRef.current = Animated.loop(heartbeat);
+      loopRef.current.start();
     } else {
+      // 루프 중단 (백그라운드/언마운트 시 경고 방지)
+      if (loopRef.current) {
+        loopRef.current.stop();
+        loopRef.current = null;
+      }
+
       // 페이드 아웃
       Animated.timing(opacityAnim, {
         toValue: 0,
@@ -60,6 +74,14 @@ const HeartbeatAnimation = ({ isActive, size = 150 }) => {
       // 스케일 리셋
       scaleAnim.setValue(1);
     }
+
+    // 언마운트/상태 전환 시 루프 정리
+    return () => {
+      if (loopRef.current) {
+        loopRef.current.stop();
+        loopRef.current = null;
+      }
+    };
   }, [isActive, scaleAnim, opacityAnim]);
 
   if (!isActive) {
