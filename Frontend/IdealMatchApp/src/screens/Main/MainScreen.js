@@ -48,10 +48,18 @@ const MainScreen = ({ navigation }) => {
   const consentEnabledAtRef = useRef(null);
   // 매칭 동의 활성화 후 알림을 보냈는지 추적 (한 번만 알림 보내기 위해)
   const consentNotificationSentRef = useRef(false);
+  // 마지막 위치 전송 시간 추적 (중복 방지)
+  const lastLocationSendTimeRef = useRef(0);
+  const isLocationSendingRef = useRef(false); // 위치 전송 중 플래그 (중복 방지)
+  const lastWatchLocationTimeRef = useRef(0); // watchLocation 콜백 마지막 호출 시간
   // 백그라운드 watchLocation ID
   const backgroundWatchIdRef = useRef(null);
   // 이전 매칭 가능 인원 수 추적 (count 증가 알림용)
   const previousMatchableCountRef = useRef(0);
+  // 마지막으로 서버에 전송한 위치 추적 (중복 전송 방지용)
+  const lastSentLocationRef = useRef({ latitude: null, longitude: null, timestamp: null });
+  // 매칭 체크 실행 중 플래그 (동시 실행 방지)
+  const isMatchingCheckRunningRef = useRef(false);
 
   useEffect(() => {
     // 로그인하지 않은 경우 위치 업데이트 하지 않음
@@ -61,7 +69,18 @@ const MainScreen = ({ navigation }) => {
       return;
     }
 
-    // 매칭 동의가 ON일 때만 매칭 시작
+    // 현재 AppState 확인
+    const currentAppState = AppState.currentState;
+    
+    // 백그라운드에서는 initializeLocation을 호출하지 않음 (백그라운드 매칭은 handleAppStateChange에서 처리)
+    if (currentAppState !== 'active') {
+      console.log(`⚠️ 백그라운드 상태 (${currentAppState}) - initializeLocation 호출 안 함`);
+      console.log('   백그라운드 매칭은 handleAppStateChange에서 처리됨');
+      setIsLoading(false);
+      return;
+    }
+
+    // 매칭 동의가 ON일 때만 매칭 시작 (포그라운드에서만)
     if (matchingConsent) {
       initializeLocation();
     } else {
@@ -89,6 +108,15 @@ const MainScreen = ({ navigation }) => {
   useEffect(() => {
     const hasProfile = userProfile && userProfile.age && userProfile.gender;
     const hasIdealType = idealType && idealType.minAge && idealType.maxAge;
+
+    // 현재 AppState 확인
+    const currentAppState = AppState.currentState;
+    
+    // 백그라운드에서는 initializeLocation을 호출하지 않음
+    if (currentAppState !== 'active') {
+      console.log(`⚠️ 백그라운드 상태 (${currentAppState}) - 프로필/이상형 설정 완료해도 initializeLocation 호출 안 함`);
+      return;
+    }
 
     if (hasProfile && hasIdealType && !isLoading && !location) {
       console.log('✅ 프로필/이상형 설정 완료 - 매칭 시작');
@@ -148,6 +176,13 @@ const MainScreen = ({ navigation }) => {
 
   const initializeLocation = async () => {
     try {
+      // 현재 AppState 확인 - 백그라운드에서는 포그라운드 interval을 시작하지 않음
+      const currentAppState = AppState.currentState;
+      if (currentAppState !== 'active') {
+        console.log(`⚠️ 백그라운드 상태 (${currentAppState}) - initializeLocation 실행 안 함`);
+        return;
+      }
+      
       // 이미 초기화 중이거나 완료된 경우 중복 실행 방지
       if (isInitializingRef.current || matchingIntervalRef.current !== null) {
         console.log('⚠️ 이미 매칭이 초기화되어 있습니다.');
@@ -215,7 +250,23 @@ const MainScreen = ({ navigation }) => {
       console.log(`📊 Interval ID: ${matchingIntervalRef.current}`);
       
       matchingIntervalRef.current = setInterval(async () => {
-        console.log('⏰ 주기적 매칭 검색... (setInterval에서 호출, 5초 간격)');
+        // 포그라운드에서만 실행되도록 확인
+        const currentAppState = AppState.currentState;
+        console.log(`⏰ 포그라운드 interval 실행 (ID: ${matchingIntervalRef.current}, 상태: ${currentAppState})`);
+        
+        if (currentAppState !== 'active') {
+          console.log(`⏸️ 포그라운드 interval 스킵 (현재 상태: ${currentAppState})`);
+          console.log(`🛑 포그라운드 interval 정리 (ID: ${matchingIntervalRef.current})`);
+          // 백그라운드로 전환되었으면 interval 정리
+          if (matchingIntervalRef.current) {
+            clearInterval(matchingIntervalRef.current);
+            matchingIntervalRef.current = null;
+            console.log('✅ 포그라운드 interval 정리 완료');
+          }
+          return;
+        }
+        
+        console.log('⏰ 주기적 매칭 검색... (포그라운드 setInterval, 5초 간격)');
         try {
           const latestLocation = await locationService.getCurrentLocation();
           setLocation(latestLocation);
@@ -254,15 +305,27 @@ const MainScreen = ({ navigation }) => {
       return;
     }
 
+    // 이미 실행 중이면 스킵 (동시 실행 방지)
+    if (isMatchingCheckRunningRef.current) {
+      console.log('⏸️ 매칭 체크 이미 실행 중 - 스킵');
+      return;
+    }
+
     // 강제 체크가 아니면 디바운싱 확인
+    // 포그라운드/백그라운드에 따라 다른 간격 적용
     if (!forceCheck) {
       const now = Date.now();
       const timeSinceLastCheck = now - lastMatchCheckTimeRef.current;
-      const MIN_MATCH_CHECK_INTERVAL = FOREGROUND_INTERVAL; // 5초
+      
+      // 현재 AppState에 따라 최소 간격 결정
+      const currentAppState = AppState.currentState;
+      const MIN_MATCH_CHECK_INTERVAL = currentAppState === 'active' 
+        ? FOREGROUND_INTERVAL  // 포그라운드: 5초
+        : DEFAULT_BACKGROUND_INTERVAL; // 백그라운드: 30초
 
       if (timeSinceLastCheck < MIN_MATCH_CHECK_INTERVAL) {
         console.log(
-          `⏸️ 매칭 체크 스킵 (${Math.floor(timeSinceLastCheck / 1000)}초 전에 실행됨, 최소 ${MIN_MATCH_CHECK_INTERVAL / 1000}초 간격 필요)`
+          `⏸️ 매칭 체크 스킵 (${Math.floor(timeSinceLastCheck / 1000)}초 전에 실행됨, 최소 ${MIN_MATCH_CHECK_INTERVAL / 1000}초 간격 필요) [${currentAppState}]`
         );
         return; // 스킵
       }
@@ -270,15 +333,23 @@ const MainScreen = ({ navigation }) => {
       // 마지막 체크 시간 업데이트
       lastMatchCheckTimeRef.current = now;
       console.log(
-        `✅ 매칭 체크 실행 (${Math.floor(timeSinceLastCheck / 1000)}초 경과)`
+        `✅ 매칭 체크 실행 (${Math.floor(timeSinceLastCheck / 1000)}초 경과) [${currentAppState}]`
       );
     } else {
       console.log('✅ 매칭 체크 실행 (강제 체크)');
       lastMatchCheckTimeRef.current = Date.now();
     }
+    
+    // 실행 플래그 설정
+    isMatchingCheckRunningRef.current = true;
 
-    // 실제 매칭 검색 수행
-    await searchMatches(searchLocation);
+    try {
+      // 실제 매칭 검색 수행
+      await searchMatches(searchLocation);
+    } finally {
+      // 실행 플래그 해제
+      isMatchingCheckRunningRef.current = false;
+    }
   };
 
   const searchMatches = async (searchLocation) => {
@@ -489,23 +560,87 @@ const MainScreen = ({ navigation }) => {
 
       // watchLocation 제거됨 - setInterval만 사용하므로 정리 불필요
     } else if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
-      console.log('🔒 백그라운드 전환 - 백그라운드 매칭 시작 (서버 신호 확인)');
+      console.log('🔒 백그라운드 전환 - 백그라운드 매칭 시작');
+      console.log(`   현재 상태: ${appState.current} → ${nextAppState}`);
+      console.log(`   매칭 동의: ${matchingConsent ? 'ON' : 'OFF'}`);
+      console.log(`   현재 위치: ${location ? `(${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)})` : '없음'}`);
       
-      if (location) {
-        await sendLocationToServer(location);
+      // 포그라운드 setInterval 정리 (중복 실행 방지)
+      if (matchingIntervalRef.current) {
+        console.log('🛑 포그라운드 매칭 interval 정리 (ID:', matchingIntervalRef.current, ')');
+        clearInterval(matchingIntervalRef.current);
+        matchingIntervalRef.current = null;
+        console.log('✅ 포그라운드 interval 정리 완료');
+      } else {
+        console.log('ℹ️ 포그라운드 interval이 없음 (이미 정리됨)');
       }
+      
+      // 백그라운드 interval도 정리 (재시작을 위해)
+      if (backgroundIntervalRef.current) {
+        console.log('🛑 기존 백그라운드 interval 정리 (ID:', backgroundIntervalRef.current, ')');
+        clearInterval(backgroundIntervalRef.current);
+        backgroundIntervalRef.current = null;
+      }
+      
+      // 백그라운드 watchLocation도 정리 (재시작을 위해)
+      if (backgroundWatchIdRef.current !== null) {
+        console.log('🛑 기존 백그라운드 watchLocation 정리 (ID:', backgroundWatchIdRef.current, ')');
+        locationService.stopWatching(backgroundWatchIdRef.current);
+        backgroundWatchIdRef.current = null;
+      }
+      
+      // 백그라운드 전환 시 즉시 위치 전송하지 않음 (백그라운드 로직에서 처리)
+      // 중복 요청 방지를 위해 여기서는 위치 전송 생략
 
       if (Platform.OS === 'android') {
         // Android는 JS 타이머 대신 Foreground Service로 백그라운드 동작 보장
+        console.log('🤖 Android: Foreground Service 시작');
         await startAndroidForegroundMatching({
           // 배터리 고려 기본 1분 (필요시 조정)
           intervalMs: 60000,
           radiusKm: 0.05,
         });
       } else {
-        // iOS: 기존 로직 유지
-        startBackgroundMatching();
-        startBackgroundLocationWatch();
+        // iOS: 백그라운드 매칭 시작
+        console.log('🍎 iOS: 백그라운드 위치 감지 및 매칭 시작');
+        
+        // 백그라운드 전환 시 즉시 실행 방지 (약간의 딜레이 추가)
+        // 여러 경로에서 동시 실행되는 것을 방지하기 위해
+        setTimeout(() => {
+          startBackgroundMatching();
+          startBackgroundLocationWatch();
+          console.log('✅ iOS 백그라운드 설정 완료');
+        }, 1000); // 1초 딜레이로 중복 실행 방지
+      }
+    } else if (appState.current === 'inactive' && nextAppState === 'background') {
+      // inactive → background 전환 시에도 백그라운드 매칭 시작
+      console.log('🔒 inactive → background 전환 - 백그라운드 매칭 시작');
+      console.log(`   현재 상태: ${appState.current} → ${nextAppState}`);
+      console.log(`   매칭 동의: ${matchingConsent ? 'ON' : 'OFF'}`);
+      
+      if (Platform.OS === 'ios') {
+        // iOS: 백그라운드 매칭 시작
+        console.log('🍎 iOS: inactive → background 전환 시 백그라운드 매칭 시작');
+        
+        // 기존 백그라운드 interval 정리 (재시작을 위해)
+        if (backgroundIntervalRef.current) {
+          console.log('🛑 기존 백그라운드 interval 정리 (ID:', backgroundIntervalRef.current, ')');
+          clearInterval(backgroundIntervalRef.current);
+          backgroundIntervalRef.current = null;
+        }
+        
+        // 기존 백그라운드 watchLocation 정리 (재시작을 위해)
+        if (backgroundWatchIdRef.current !== null) {
+          console.log('🛑 기존 백그라운드 watchLocation 정리 (ID:', backgroundWatchIdRef.current, ')');
+          locationService.stopWatching(backgroundWatchIdRef.current);
+          backgroundWatchIdRef.current = null;
+        }
+        
+        setTimeout(() => {
+          startBackgroundMatching();
+          startBackgroundLocationWatch();
+          console.log('✅ iOS 백그라운드 설정 완료 (inactive → background)');
+        }, 500); // 0.5초 딜레이
       }
     }
 
@@ -566,22 +701,106 @@ const MainScreen = ({ navigation }) => {
     }
   };
 
-  const sendLocationToServer = async (currentLocation) => {
+  const sendLocationToServer = async (currentLocation, forceSend = false) => {
     // 로그인하지 않은 경우 위치 업데이트 하지 않음
     if (!isLoggedIn) {
       console.log('⚠️ 로그인하지 않음 - 위치 업데이트 중단');
-      return;
+      return { success: false, error: '로그인하지 않음' };
     }
     
     // 매칭 동의가 OFF인 경우 위치 업데이트 하지 않음
     if (!matchingConsent) {
       console.log('⚠️ 매칭 동의 OFF - 위치 업데이트 중단');
-      return;
+      return { success: false, error: '매칭 동의 OFF' };
     }
+    
+    if (!currentLocation || !currentLocation.latitude || !currentLocation.longitude) {
+      console.warn('⚠️ 유효하지 않은 위치 정보:', currentLocation);
+      return { success: false, error: '유효하지 않은 위치 정보' };
+    }
+    
+    // 중복 전송 방지: 마지막 전송 후 최소 간격 경과 확인
+    // forceSend가 true일 때는 백그라운드 주기적 전송이므로 간격을 더 짧게 설정 (5초)
+    const now = Date.now();
+    const timeSinceLastSend = now - lastLocationSendTimeRef.current;
+    const MIN_SEND_INTERVAL = forceSend ? 5000 : 25000; // forceSend: 5초, 일반: 25초
+    
+    // 이미 전송 중이면 건너뜀 (동시 전송 방지)
+    if (isLocationSendingRef.current) {
+      console.log('⏸️ 위치 전송 중 - 중복 요청 스킵');
+      return { success: true, skipped: true, reason: '이미 전송 중' };
+    }
+    
+    if (lastLocationSendTimeRef.current > 0 && timeSinceLastSend < MIN_SEND_INTERVAL) {
+      console.log('ℹ️ 최근 전송 후 시간이 짧음 - 서버 전송 건너뜀:', {
+        timeSinceLastSend: `${(timeSinceLastSend / 1000).toFixed(1)}초 전`,
+        minInterval: `${MIN_SEND_INTERVAL / 1000}초`,
+        forceSend: forceSend,
+      });
+      return { success: true, skipped: true, reason: '최근 전송 후 시간이 짧음' };
+    }
+    
+    // 위치 타임스탬프 확인 (10초 이내의 위치만 "새 위치"로 간주)
+    // iOS 백그라운드에서는 캐시된 위치를 반환할 수 있으므로 더 엄격하게 확인
+    const locationAge = currentLocation.timestamp ? Date.now() - currentLocation.timestamp : Infinity;
+    const isLocationNew = locationAge < 10000; // 10초 이내만 새 위치로 간주
+    
+    // 위치가 너무 오래된 경우 (캐시된 위치일 가능성) 거부
+    if (locationAge > 30000) {
+      console.warn('⚠️ 위치가 너무 오래됨 - 서버 전송 건너뜀:', {
+        latitude: currentLocation.latitude.toFixed(6),
+        longitude: currentLocation.longitude.toFixed(6),
+        locationAge: `${(locationAge / 1000).toFixed(1)}초 전`,
+        timestamp: currentLocation.timestamp ? new Date(currentLocation.timestamp).toISOString() : '없음',
+      });
+      return { success: false, skipped: true, reason: '위치가 너무 오래됨 (캐시된 위치일 가능성)' };
+    }
+    
+    // 위치가 실제로 변경되었는지 확인 (0.00001도 ≈ 1.1m)
+    // 임계값을 조금 더 크게 설정하여 GPS 노이즈 무시
+    const lastSent = lastSentLocationRef.current;
+    const hasLocationChanged = 
+      lastSent.latitude === null ||
+      lastSent.longitude === null ||
+      Math.abs(currentLocation.latitude - lastSent.latitude) > 0.00001 ||
+      Math.abs(currentLocation.longitude - lastSent.longitude) > 0.00001;
+    
+    // 위치가 변경되지 않았으면 전송 건너뜀 (타임스탬프와 관계없이)
+    // 첫 번째 전송이거나 위치가 실제로 변경된 경우에만 전송
+    // forceSend가 true면 위치 변경 여부와 관계없이 전송 (백그라운드 주기적 전송)
+    if (!forceSend && !hasLocationChanged) {
+      console.log('ℹ️ 위치 변경 없음 - 서버 전송 건너뜀:', {
+        latitude: currentLocation.latitude.toFixed(6),
+        longitude: currentLocation.longitude.toFixed(6),
+        locationAge: `${(locationAge / 1000).toFixed(1)}초 전`,
+        previousLocation: lastSent.latitude !== null ? 
+          `(${lastSent.latitude.toFixed(6)}, ${lastSent.longitude.toFixed(6)})` : '없음',
+        distance: lastSent.latitude !== null ? 
+          `${(Math.abs(currentLocation.latitude - lastSent.latitude) * 111000).toFixed(2)}m (lat), ${(Math.abs(currentLocation.longitude - lastSent.longitude) * 111000).toFixed(2)}m (lon)` : '없음',
+        forceSend: forceSend,
+      });
+      return { success: true, skipped: true, reason: '위치 변경 없음' };
+    }
+    
+    // forceSend가 true이고 위치가 변경되지 않았어도 전송 (백그라운드 주기적 전송)
+    if (forceSend && !hasLocationChanged) {
+      console.log('ℹ️ 위치 변경 없지만 백그라운드 주기적 전송 (forceSend=true):', {
+        latitude: currentLocation.latitude.toFixed(6),
+        longitude: currentLocation.longitude.toFixed(6),
+        locationAge: `${(locationAge / 1000).toFixed(1)}초 전`,
+      });
+    }
+    
+    // 전송 시작 플래그 설정
+    isLocationSendingRef.current = true;
+    
     try {
       console.log('🌐 서버로 위치 전송 중...', {
         latitude: currentLocation.latitude.toFixed(6),
         longitude: currentLocation.longitude.toFixed(6),
+        hasLocationChanged: hasLocationChanged,
+        isLocationNew: isLocationNew,
+        forceSend: forceSend,
       });
 
       const result = await apiClient.updateLocation(
@@ -590,7 +809,17 @@ const MainScreen = ({ navigation }) => {
       );
 
       if (result.success) {
-        console.log('✅ 위치 업데이트 성공:', result.data);
+        // 전송 성공 시 마지막 전송 위치 및 시간 업데이트
+        lastSentLocationRef.current = {
+          latitude: currentLocation.latitude,
+          longitude: currentLocation.longitude,
+          timestamp: currentLocation.timestamp || Date.now(),
+        };
+        lastLocationSendTimeRef.current = Date.now();
+        console.log('✅ 위치 업데이트 성공:', {
+          latitude: currentLocation.latitude.toFixed(6),
+          longitude: currentLocation.longitude.toFixed(6),
+        });
       } else {
         console.error('❌ 위치 업데이트 실패:', result.error);
       }
@@ -602,34 +831,117 @@ const MainScreen = ({ navigation }) => {
         success: false, 
         error: error.message || '알 수 없는 오류가 발생했습니다.' 
       };
+    } finally {
+      // 전송 완료 플래그 해제 (성공/실패 관계없이)
+      isLocationSendingRef.current = false;
     }
   };
 
   /**
    * 백그라운드 위치 감지
-   * - watchLocation을 사용해 OS가 위치 변화로 앱을 깨워줄 수 있도록 설정
-   * - 위치 변경 시마다 서버 전송 + 매칭 체크 + 활성 매칭 수 조회
+   * - iOS 백그라운드에서 setInterval이 실행되지 않을 수 있으므로 watchLocation도 함께 사용
+   * - watchLocation: 위치 변경 시 즉시 콜백 호출 (iOS가 앱을 깨워줌)
+   * - setInterval: 주기적으로 위치 확인 (백그라운드에서 실행되지 않을 수 있음)
    */
   const startBackgroundLocationWatch = () => {
     // 이미 동작 중이면 재시작하지 않음
     if (backgroundWatchIdRef.current !== null) {
-      console.log('⚠️ 백그라운드 위치 감지 이미 실행 중');
+      console.log('⚠️ 백그라운드 위치 감지 이미 실행 중 (watchId:', backgroundWatchIdRef.current, ')');
       return;
     }
 
-    console.log('🎯 백그라운드 위치 감지 시작 (watchLocation)');
+    console.log('🎯 백그라운드 위치 감지 시작 (watchLocation + setInterval)');
+    console.log('   - watchLocation: 위치 변경 시 즉시 콜백 호출 (iOS 백그라운드 지원)');
+    console.log('   - setInterval: 30초마다 위치 확인 (백그라운드에서 실행되지 않을 수 있음)');
+    
+    // watchLocation 콜백: 위치가 변경되면 즉시 업데이트
+    // iOS 백그라운드에서 위치 변경 시 이 콜백이 호출됨
+    // "항상" 권한과 "정확한 위치"가 활성화되어 있으면 백그라운드에서도 작동해야 함
     const watchId = locationService.watchLocation(async (newLocation) => {
       try {
+        const appState = AppState.currentState;
+        const now = Date.now();
+        
+        // 중복 호출 방지: 최근 2초 이내에 호출되었으면 건너뜀
+        const timeSinceLastWatch = now - lastWatchLocationTimeRef.current;
+        const MIN_WATCH_INTERVAL = 2000; // 2초 최소 간격
+        
+        if (lastWatchLocationTimeRef.current > 0 && timeSinceLastWatch < MIN_WATCH_INTERVAL) {
+          console.log(`⏸️ watchLocation 콜백 스킵 (${(timeSinceLastWatch / 1000).toFixed(1)}초 전에 호출됨, 최소 ${MIN_WATCH_INTERVAL / 1000}초 간격 필요)`);
+          return;
+        }
+        
+        // 이미 전송 중이면 건너뜀
+        if (isLocationSendingRef.current) {
+          console.log(`⏸️ 위치 전송 중 - watchLocation 콜백 스킵`);
+          return;
+        }
+        
+        lastWatchLocationTimeRef.current = now;
+        
+        console.log(`📍 위치 변경 감지 (watchLocation 콜백) [${appState}]`);
+        console.log(`   위치: (${newLocation.latitude.toFixed(6)}, ${newLocation.longitude.toFixed(6)})`);
+        console.log(`   정확도: ${newLocation.accuracy?.toFixed(1)}m`);
+        console.log(`   원본 시간: ${new Date(newLocation.timestamp).toISOString()}`);
+        
+        // 타임스탬프를 현재 시간으로 업데이트 (백그라운드에서 받은 위치)
+        const originalTimestamp = newLocation.timestamp;
+        const locationAge = originalTimestamp ? now - originalTimestamp : 0;
+        newLocation.timestamp = now;
+        console.log(`   타임스탬프 업데이트: ${(locationAge / 1000).toFixed(1)}초 차이`);
+        
+        // 위치 변경 여부 확인 (GPS 노이즈 무시, 하지만 백그라운드에서는 더 민감하게)
+        const lastSent = lastSentLocationRef.current;
+        // 백그라운드에서는 위치 변경 감지 임계값을 더 작게 설정 (0.000005도 ≈ 0.55m)
+        const distanceThreshold = appState === 'background' ? 0.000005 : 0.00001;
+        const hasLocationChanged = 
+          lastSent.latitude === null ||
+          lastSent.longitude === null ||
+          Math.abs(newLocation.latitude - lastSent.latitude) > distanceThreshold ||
+          Math.abs(newLocation.longitude - lastSent.longitude) > distanceThreshold;
+        
+        // 위치 변경 정보 로그 (항상 출력)
+        if (lastSent.latitude !== null) {
+          const distanceLat = Math.abs(newLocation.latitude - lastSent.latitude) * 111000;
+          const distanceLon = Math.abs(newLocation.longitude - lastSent.longitude) * 111000;
+          console.log(`   이전 위치: (${lastSent.latitude.toFixed(6)}, ${lastSent.longitude.toFixed(6)})`);
+          console.log(`   이동 거리: ${distanceLat.toFixed(2)}m (lat), ${distanceLon.toFixed(2)}m (lon)`);
+        }
+        console.log(`   위치 변경 여부: ${hasLocationChanged ? '✅ 변경됨' : '❌ 변경 없음'} (임계값: ${distanceThreshold * 111000}m)`);
+        
+        // 위치가 변경되지 않았으면 로그만 출력하고 전송은 건너뜀 (백그라운드에서 불필요한 전송 방지)
+        if (!hasLocationChanged && appState === 'background') {
+          console.log(`📍 위치 변경 없음 (watchLocation 콜백) [${appState}] - 로그만 출력, 전송 건너뜀`);
+          return; // 위치가 변경되지 않았으면 전송하지 않음
+        }
+        
         setLocation(newLocation);
-        await sendLocationToServer(newLocation);
-        await searchMatchesDebounced(newLocation, true); // 위치 이벤트 시 강제 체크
-        await fetchActiveMatches(newLocation);
+        
+        // 위치 서버에 전송 (forceSend=true로 백그라운드 주기적 전송)
+        // 위치가 변경되었거나 백그라운드에서 주기적 전송이 필요한 경우
+        // sendLocationToServer 내부에서 isLocationSendingRef를 관리하므로 여기서는 설정하지 않음
+        console.log('🌐 백그라운드 위치 서버 전송 시작...');
+        
+        const sendResult = await sendLocationToServer(newLocation, true);
+        
+        if (sendResult && sendResult.success && !sendResult.skipped) {
+          // 디바운싱 적용
+          await searchMatchesDebounced(newLocation, false);
+          await fetchActiveMatches(newLocation);
+          console.log('✅ 백그라운드 위치 업데이트 완료');
+        } else if (sendResult && sendResult.skipped) {
+          console.log(`ℹ️ 위치 전송 건너뜀: ${sendResult.reason}`);
+        }
       } catch (error) {
         console.error('❌ 백그라운드 위치 감지 콜백 오류:', error);
+        isLocationSendingRef.current = false; // 에러 발생 시에도 플래그 해제
       }
     });
 
     backgroundWatchIdRef.current = watchId;
+    console.log(`✅ 백그라운드 watchLocation 시작됨 (watchId: ${watchId})`);
+    console.log(`   ⚠️ 참고: iOS 백그라운드에서는 위치가 변경되지 않으면 콜백이 호출되지 않을 수 있습니다.`);
+    console.log(`   ⚠️ 참고: setInterval도 백그라운드에서 실행되지 않을 수 있습니다.`);
   };
 
   const startBackgroundMatching = () => {
@@ -645,39 +957,178 @@ const MainScreen = ({ navigation }) => {
       return;
     }
     
-    // iOS 백그라운드: watchLocation과 함께 setInterval을 fallback으로 사용
-    // watchLocation이 백그라운드에서 제대로 동작하지 않을 수 있으므로
-    // setInterval을 추가로 사용하여 주기적으로 위치 업데이트 시도
+    // iOS 백그라운드: setInterval만 사용하여 30초마다 위치 업데이트
+    // watchLocation은 백그라운드에서 중복 요청을 발생시킬 수 있으므로 사용하지 않음
     const interval = DEFAULT_BACKGROUND_INTERVAL;
-    console.log(`🔄 iOS 백그라운드 매칭 시작 (${interval / 1000}초 간격, watchLocation + setInterval)`);
+    const currentAppState = AppState.currentState;
+    console.log(`🔄 iOS 백그라운드 매칭 시작 (${interval / 1000}초 간격, setInterval만 사용)`);
+    console.log(`   - 현재 AppState: ${currentAppState}`);
+    console.log(`   - watchLocation은 백그라운드에서 사용하지 않음 (중복 방지)`);
+    console.log(`   - setInterval이 ${interval / 1000}초마다 위치를 가져와서 서버에 전송`);
     
-    // 기존 interval이 있으면 제거
-    if (backgroundIntervalRef.current) {
-      clearInterval(backgroundIntervalRef.current);
-      backgroundIntervalRef.current = null;
+    // 포그라운드에서는 백그라운드 매칭을 시작하지 않음
+    if (currentAppState === 'active') {
+      console.log('⚠️ 포그라운드 상태 - 백그라운드 매칭 시작 안 함');
+      return;
     }
+    
+    // 이미 백그라운드 interval이 실행 중이면 재시작하지 않음 (중복 방지)
+    if (backgroundIntervalRef.current) {
+      console.log('⚠️ 백그라운드 매칭 이미 실행 중 (ID:', backgroundIntervalRef.current, ', 재시작 안 함)');
+      return;
+    }
+    
+    // iOS 백그라운드에서 setInterval이 제한될 수 있으므로
+    // 백그라운드 위치 업데이트는 주로 watchLocation에 의존
+    // 하지만 백그라운드에서도 주기적으로 위치를 확인하도록 시도
+    // iOS 백그라운드에서 setInterval이 제한될 수 있지만, 시도는 해봄
+    // watchLocation이 위치 변경이 없으면 콜백이 호출되지 않을 수 있으므로
+    // 주기적으로 위치를 확인하는 것이 중요함
+    // 이전 위치를 추적하여 실제로 위치가 변경되었는지 확인
+    let lastLocationRef = { latitude: null, longitude: null, timestamp: null };
+    let lastIntervalExecutionTime = Date.now(); // 마지막 interval 실행 시간 추적
     
     backgroundIntervalRef.current = setInterval(async () => {
       try {
-        console.log('⏰ iOS 백그라운드 위치 업데이트 (setInterval fallback)...');
+        const currentAppState = AppState.currentState;
+        const now = Date.now();
+        const timeSinceLastExecution = now - lastIntervalExecutionTime;
         
-        // 현재 위치 가져오기
-        const currentLocation = await locationService.getCurrentLocation();
-        setLocation(currentLocation);
+        console.log(`⏰ 백그라운드 interval 실행 (ID: ${backgroundIntervalRef.current}, 상태: ${currentAppState})`);
+        console.log(`   마지막 실행 후 경과 시간: ${(timeSinceLastExecution / 1000).toFixed(1)}초`);
         
-        // 위치 서버에 전송
-        await sendLocationToServer(currentLocation);
+        // 백그라운드에서만 실행되도록 확인
+        if (currentAppState === 'active') {
+          console.log(`⏸️ 백그라운드 interval 스킵 (현재 상태: ${currentAppState}, 포그라운드로 전환됨)`);
+          console.log(`🛑 백그라운드 interval 정리 (ID: ${backgroundIntervalRef.current})`);
+          // 포그라운드로 전환되었으면 interval 정리
+          if (backgroundIntervalRef.current) {
+            clearInterval(backgroundIntervalRef.current);
+            backgroundIntervalRef.current = null;
+            console.log('✅ 백그라운드 interval 정리 완료');
+          }
+          return;
+        }
         
-        // 디바운싱된 매칭 체크
-        await searchMatchesDebounced(currentLocation);
+        // 마지막 실행 시간 업데이트
+        lastIntervalExecutionTime = now;
         
-        // 활성 매칭 수도 조회
-        await fetchActiveMatches(currentLocation);
+        console.log(`⏰ iOS 백그라운드 위치 업데이트 (setInterval, 30초 간격) [${currentAppState}]...`);
+        console.log(`   ⚠️ 참고: iOS 백그라운드에서 setInterval이 실행되지 않을 수 있습니다.`);
+        console.log(`   💡 watchLocation이 위치 변경을 감지하면 콜백이 호출됩니다.`);
+        
+        // 백그라운드에서는 강제로 새 위치 가져오기 (캐시 무시)
+        // 타임아웃을 길게 설정 (백그라운드에서는 위치 가져오기가 느릴 수 있음)
+        // 백그라운드에서 안정적으로 GPS를 받아오기 위해 타임아웃을 25초로 설정
+        let currentLocation;
+        try {
+          currentLocation = await Promise.race([
+            locationService.getCurrentLocation(true), // forceFresh = true: 캐시 무시하고 새 위치 가져오기
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('위치 가져오기 타임아웃')), 25000) // 25초 타임아웃 (백그라운드 안정성 향상)
+            )
+          ]);
+          console.log(`✅ 백그라운드에서 위치 가져오기 성공: (${currentLocation.latitude.toFixed(6)}, ${currentLocation.longitude.toFixed(6)})`);
+        } catch (error) {
+          console.error(`❌ 백그라운드에서 위치 가져오기 실패:`, error.message);
+          return; // 위치를 가져오지 못하면 중단
+        }
+        
+        if (currentLocation) {
+          // 백그라운드에서 위치를 받아올 때 타임스탬프를 현재 시간으로 업데이트
+          // iOS 백그라운드에서는 위치를 받아오는 데 시간이 걸릴 수 있으므로
+          // 타임스탬프를 현재 시간으로 설정하여 위치 나이 체크를 통과하도록 함
+          const now = Date.now();
+          const originalTimestamp = currentLocation.timestamp;
+          const locationAge = originalTimestamp ? now - originalTimestamp : Infinity;
+          
+          // 백그라운드에서 받은 위치의 타임스탬프를 현재 시간으로 업데이트
+          // (위치 자체는 유효하지만 타임스탬프만 오래된 경우를 처리)
+          if (locationAge > 10000) { // 10초 이상 차이나면 타임스탬프 업데이트
+            console.log(`🔄 백그라운드 위치 타임스탬프 업데이트: ${(locationAge / 1000).toFixed(1)}초 전 → 현재 시간`);
+            currentLocation.timestamp = now;
+          }
+          
+          // 위치 타임스탬프 확인 (백그라운드에서는 60초 이내의 위치 허용)
+          // iOS 백그라운드에서는 위치 업데이트가 느릴 수 있으므로 더 관대하게 설정
+          const updatedLocationAge = currentLocation.timestamp ? Date.now() - currentLocation.timestamp : Infinity;
+          const isLocationNew = updatedLocationAge < 60000; // 60초 이내면 새 위치로 간주 (백그라운드 안정성 향상)
+          
+          // 위치가 너무 오래된 경우 (캐시된 위치일 가능성) 거부
+          // 백그라운드에서는 120초 이상 오래된 위치는 거부
+          if (updatedLocationAge > 120000) {
+            console.warn('⚠️ 백그라운드 위치가 너무 오래됨 - 건너뜀:', {
+              latitude: currentLocation.latitude.toFixed(6),
+              longitude: currentLocation.longitude.toFixed(6),
+              locationAge: `${(updatedLocationAge / 1000).toFixed(1)}초 전`,
+              originalLocationAge: `${(locationAge / 1000).toFixed(1)}초 전`,
+              timestamp: currentLocation.timestamp ? new Date(currentLocation.timestamp).toISOString() : '없음',
+            });
+            return; // 이 위치는 사용하지 않음
+          }
+          
+          // 위치가 실제로 변경되었는지 확인 (0.00001도 ≈ 1.1m)
+          // 백그라운드에서는 위치 변경 감지를 더 관대하게 (GPS 노이즈 고려)
+          const hasLocationChanged = 
+            lastLocationRef.latitude === null ||
+            lastLocationRef.longitude === null ||
+            Math.abs(currentLocation.latitude - lastLocationRef.latitude) > 0.00001 ||
+            Math.abs(currentLocation.longitude - lastLocationRef.longitude) > 0.00001;
+          
+          console.log('📍 백그라운드 위치 정보:', {
+            latitude: currentLocation.latitude.toFixed(6),
+            longitude: currentLocation.longitude.toFixed(6),
+            timestamp: currentLocation.timestamp ? new Date(currentLocation.timestamp).toISOString() : '없음',
+            originalLocationAge: `${(locationAge / 1000).toFixed(1)}초 전`,
+            updatedLocationAge: `${(updatedLocationAge / 1000).toFixed(1)}초 전`,
+            isLocationNew: isLocationNew,
+            hasLocationChanged: hasLocationChanged,
+            previousLocation: lastLocationRef.latitude !== null ? 
+              `(${lastLocationRef.latitude.toFixed(6)}, ${lastLocationRef.longitude.toFixed(6)})` : '없음',
+          });
+          
+          // 백그라운드에서는 위치 변경과 관계없이 주기적으로 위치 업데이트
+          // (30초마다 위치를 받아와서 서버에 전송)
+          // 위치가 30초 이내면 업데이트 (캐시된 위치 제외)
+          if (isLocationNew) {
+            console.log('✅ 백그라운드 주기적 위치 업데이트 - 서버 전송 및 매칭 체크');
+            lastLocationRef = {
+              latitude: currentLocation.latitude,
+              longitude: currentLocation.longitude,
+              timestamp: currentLocation.timestamp || Date.now(),
+            };
+            
+            setLocation(currentLocation);
+            
+            // 위치 서버에 전송 (백그라운드에서는 위치 변경 여부와 관계없이 주기적으로 전송)
+            // sendLocationToServer의 중복 방지 로직을 우회하기 위해 forceSend 옵션 추가
+            const sendResult = await sendLocationToServer(currentLocation, true); // forceSend = true
+            
+            // 전송 성공 또는 스킵된 경우에만 매칭 체크 수행
+            if (sendResult && (sendResult.success || sendResult.skipped)) {
+              // 디바운싱된 매칭 체크
+              await searchMatchesDebounced(currentLocation);
+              
+              // 활성 매칭 수도 조회
+              await fetchActiveMatches(currentLocation);
+            }
+          } else {
+            console.log('ℹ️ 위치가 너무 오래됨 (캐시된 위치일 가능성) - 서버 전송 및 매칭 체크 건너뜀');
+            console.log(`   위치 나이: ${(locationAge / 1000).toFixed(1)}초 (30초 초과 시 캐시된 위치일 수 있음)`);
+          }
+        }
         
       } catch (error) {
-        console.error('❌ iOS 백그라운드 매칭 체크 오류:', error);
+        // 타임아웃이나 위치 가져오기 실패는 정상적일 수 있음 (백그라운드 제한)
+        if (error.message && error.message.includes('타임아웃')) {
+          console.log('ℹ️ 백그라운드 위치 가져오기 타임아웃 (정상, watchLocation에 의존)');
+        } else {
+          console.error('❌ iOS 백그라운드 매칭 체크 오류:', error.message || error);
+        }
       }
     }, interval);
+    
+    console.log(`✅ 백그라운드 setInterval 시작됨 (ID: ${backgroundIntervalRef.current}, 간격: ${interval}ms)`);
   };
 
   // 매칭 동의 토글 함수

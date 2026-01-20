@@ -11,6 +11,7 @@
 		13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB01A68108700A75B9A /* AppDelegate.mm */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		13B07FC11A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB71A68108700A75B9A /* main.m */; };
+		384D8AF32F1FE94F0017FBC1 /* LocationConfigModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 384D8AF22F1FE94F0017FBC1 /* LocationConfigModule.m */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		AE0E5C573710B3A7E3C39CA7 /* libPods-IdealMatchApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = CB3BE853A1BA16DFE6046B82 /* libPods-IdealMatchApp.a */; };
 		F671EB5F3785CCE7D2C57A8F /* libPods-IdealMatchApp-IdealMatchAppTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 1B89B0084F26BD32B1AC36B0 /* libPods-IdealMatchApp-IdealMatchAppTests.a */; };
@@ -37,6 +38,8 @@
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = IdealMatchApp/Info.plist; sourceTree = "<group>"; };
 		13B07FB71A68108700A75B9A /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = main.m; path = IdealMatchApp/main.m; sourceTree = "<group>"; };
 		1B89B0084F26BD32B1AC36B0 /* libPods-IdealMatchApp-IdealMatchAppTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-IdealMatchApp-IdealMatchAppTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		384D8AF12F1FE94F0017FBC1 /* LocationConfigModule.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LocationConfigModule.h; sourceTree = "<group>"; };
+		384D8AF22F1FE94F0017FBC1 /* LocationConfigModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LocationConfigModule.m; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = IdealMatchApp/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		A6B9EC11F754356136C84A08 /* Pods-IdealMatchApp-IdealMatchAppTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-IdealMatchApp-IdealMatchAppTests.release.xcconfig"; path = "Target Support Files/Pods-IdealMatchApp-IdealMatchAppTests/Pods-IdealMatchApp-IdealMatchAppTests.release.xcconfig"; sourceTree = "<group>"; };
 		C09ABE259855F370D9CC1B0D /* Pods-IdealMatchApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-IdealMatchApp.debug.xcconfig"; path = "Target Support Files/Pods-IdealMatchApp/Pods-IdealMatchApp.debug.xcconfig"; sourceTree = "<group>"; };
@@ -116,6 +119,8 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
+				384D8AF12F1FE94F0017FBC1 /* LocationConfigModule.h */,
+				384D8AF22F1FE94F0017FBC1 /* LocationConfigModule.m */,
 				13B07FAE1A68108700A75B9A /* IdealMatchApp */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				00E356EF1AD99517003FC87E /* IdealMatchAppTests */,
@@ -272,9 +277,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IdealMatchApp-IdealMatchAppTests/Pods-IdealMatchApp-IdealMatchAppTests-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IdealMatchApp-IdealMatchAppTests/Pods-IdealMatchApp-IdealMatchAppTests-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -289,9 +298,13 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IdealMatchApp/Pods-IdealMatchApp-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
+			inputPaths = (
+			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-IdealMatchApp/Pods-IdealMatchApp-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -377,6 +390,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */,
+				384D8AF32F1FE94F0017FBC1 /* LocationConfigModule.m in Sources */,
 				13B07FC11A68108700A75B9A /* main.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

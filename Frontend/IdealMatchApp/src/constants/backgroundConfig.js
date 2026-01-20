@@ -35,7 +35,7 @@ export const BACKGROUND_INTERVALS = {
 };
 
 // 기본 백그라운드 간격
-export const DEFAULT_BACKGROUND_INTERVAL = 5000; // 5초
+export const DEFAULT_BACKGROUND_INTERVAL = 30000; // 30초 (백그라운드에서 주기적으로 위치 받아오기)
 
 // 포어그라운드 간격
 export const FOREGROUND_INTERVAL = 5000; // 5초
