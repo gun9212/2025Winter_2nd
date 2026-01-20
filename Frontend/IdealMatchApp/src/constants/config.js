@@ -28,7 +28,8 @@ export const CONFIG = {
     : 'https://your-production-api.com/api',  // 프로덕션
   // 테스트용 user_id (디버그 모드에서 사용)
   // 멀티 계정 테스트를 위해 필요 시 직접 숫자 ID를 넣어 특정 계정으로 강제 테스트하세요.
-  TEST_USER_ID: 16, // 실제 존재하는 사용자 ID (rlawldus, 프로필 있음)
+  // null로 설정하면 토큰이 없을 때 user_id를 사용하지 않음 (로그인 강제)
+  TEST_USER_ID: null, // null로 설정하여 로그인 없이 API 사용 방지
 };
 
 export const MOCK_AUTH_CODE = '123456';

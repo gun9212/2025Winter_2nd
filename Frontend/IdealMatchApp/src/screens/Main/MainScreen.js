@@ -300,9 +300,17 @@ const MainScreen = ({ navigation }) => {
       // 매칭 체크 후 활성 매칭 수도 함께 조회
       await fetchActiveMatches(searchLocation);
 
-      // 매칭 발생 시 로컬 알림 표시 (중복 방지)
-      // has_new_match가 true일 때만 알림 표시 (기존 매칭은 제외)
-      if (result.matched && result.matches.length > 0 && result.isNewMatch) {
+      // 디버깅: 매칭 결과 확인
+      console.log('🔍 매칭 결과 확인:', {
+        matched: result.matched,
+        matchesCount: result.matches?.length || 0,
+        isNewMatch: result.isNewMatch,
+        matches: result.matches,
+      });
+
+      // 매칭 발생 시 로컬 알림 표시 (새 매칭만, 중복 방지)
+      if (result.matched && result.isNewMatch && result.matches && result.matches.length > 0) {
+        console.log('✅ 새 매칭 발견 - 알림 처리 시작');
         const bestMatch = result.matches[0];
         // 매칭 ID 생성 (user1_id와 user2_id 조합 또는 match.id)
         const matchId = bestMatch.id || `${bestMatch.user1_id || bestMatch.user1?.id || 'unknown'}_${bestMatch.user2_id || bestMatch.user2?.id || 'unknown'}`;
@@ -310,7 +318,7 @@ const MainScreen = ({ navigation }) => {
         // 이미 알림을 보낸 매칭인지 확인
         if (notifiedMatchesRef.current.has(matchId)) {
           console.log('ℹ️ 이미 알림을 보낸 매칭:', matchId);
-          return;
+          return; // 중복 알림 방지
         }
         
         console.log('🎉 새 매칭 발견! 로컬 알림 표시:', matchId);
@@ -324,7 +332,12 @@ const MainScreen = ({ navigation }) => {
         notifiedMatchesRef.current.add(matchId);
         
         // 로컬 알림 표시 (무료, iOS/Android 모두 동작)
-        await notificationService.showMatchNotification(bestMatch);
+        try {
+          await notificationService.showMatchNotification(bestMatch);
+          console.log('✅ 알림 표시 완료');
+        } catch (error) {
+          console.error('❌ 알림 표시 실패:', error);
+        }
         
         // 하트 애니메이션 (포그라운드일 때만)
         if (AppState.currentState === 'active') {
@@ -335,9 +348,13 @@ const MainScreen = ({ navigation }) => {
             setShowHeartbeat(false);
           }, 5000);
         }
-      } else if (result.matched && result.matches.length > 0 && !result.isNewMatch) {
-        // 기존 매칭이지만 새 매칭이 아닌 경우
+      } else if (result.matched && !result.isNewMatch) {
         console.log('ℹ️ 기존 매칭 (알림 표시 안 함)');
+      } else {
+        console.log('⚠️ 매칭 조건 불충족:', {
+          matched: result.matched,
+          hasMatches: result.matches && result.matches.length > 0,
+        });
       }
     } catch (error) {
       console.error('❌ 매칭 검색 오류:', error);

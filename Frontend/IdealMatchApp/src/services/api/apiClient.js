@@ -1191,10 +1191,18 @@ class ApiClient {
       // 백엔드 응답: { success: true, data: { has_new_match, latest_match } }
       const data = response.data || response;
       
+      console.log('🔍 매칭 응답 데이터 파싱:', {
+        hasData: !!data,
+        hasLatestMatch: !!data.latest_match,
+        hasNewMatch: data.has_new_match,
+        latestMatch: data.latest_match,
+        fullData: data,
+      });
+      
       // 기존 매칭이 있어도 매칭으로 처리
       if (data.latest_match) {
         const match = data.latest_match;
-        return {
+        const matchResult = {
           matched: true,
           matches: [{
             id: match.id, // 매칭 ID 추가 (중복 알림 방지용)
@@ -1216,8 +1224,15 @@ class ApiClient {
           timestamp: new Date().toISOString(),
           isNewMatch: data.has_new_match || false, // 새 매칭 여부
         };
+        console.log('✅ 매칭 결과 생성 완료:', {
+          matched: true,
+          matchesCount: 1,
+          isNewMatch: data.has_new_match || false,
+        });
+        return matchResult;
       }
 
+      console.log('⚠️ latest_match가 없음 - 매칭 없음');
       return {
         matched: false,
         matches: [],

@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated, Easing } from 'react-native';
+import { View, StyleSheet, Animated, Easing, Image } from 'react-native';
+import LoginLogo from '../../images/login_logo.png';
 import { COLORS } from '../../constants';
 
-const HeartbeatAnimation = ({ isActive, size = 100 }) => {
+const HeartbeatAnimation = ({ isActive, size = 150 }) => {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
@@ -76,17 +77,11 @@ const HeartbeatAnimation = ({ isActive, size = 100 }) => {
           },
         ]}
       >
-        <View style={[styles.heart, { width: size, height: size }]}>
-          <View style={[styles.heartShape, { width: size, height: size }]}>
-            <View style={[styles.leftHeart, { width: size * 0.5, height: size * 0.8 }]} />
-            <View style={[styles.rightHeart, { width: size * 0.5, height: size * 0.8 }]} />
-          </View>
-          <View style={[styles.heartBottom, { 
-            width: size * 0.707, 
-            height: size * 0.707,
-            top: size * 0.2,
-          }]} />
-        </View>
+        <Image 
+          source={LoginLogo} 
+          style={[styles.heartImage, { width: size, height: size }]}
+          resizeMode="contain"
+        />
       </Animated.View>
     </View>
   );
@@ -97,37 +92,19 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     zIndex: 1000,
   },
   heartContainer: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  heart: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  heartShape: {
-    flexDirection: 'row',
-  },
-  leftHeart: {
-    backgroundColor: COLORS.primary,
-    borderTopLeftRadius: 1000,
-    borderBottomLeftRadius: 1000,
-    transform: [{ rotate: '-45deg' }],
-  },
-  rightHeart: {
-    backgroundColor: COLORS.primary,
-    borderTopRightRadius: 1000,
-    borderBottomRightRadius: 1000,
-    transform: [{ rotate: '45deg' }],
-    marginLeft: -20,
-  },
-  heartBottom: {
-    position: 'absolute',
-    backgroundColor: COLORS.primary,
-    transform: [{ rotate: '45deg' }],
+  heartImage: {
+    tintColor: COLORS.primary, // 로고 색상을 핑크로 변경
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 20,
   },
 });
 

@@ -105,6 +105,12 @@ export const AuthProvider = ({ children }) => {
    */
   const login = async (userId, password) => {
     try {
+      // 이전 계정의 토큰과 사용자 정보 삭제 (다른 계정으로 로그인 시 충돌 방지)
+      await StorageService.clearTokens();
+      await StorageService.clearCurrentUser();
+      setCurrentUser(null);
+      setIsLoggedIn(false);
+      
       // 실제 백엔드 API 호출
       const result = await apiClient.login(userId, password);
       

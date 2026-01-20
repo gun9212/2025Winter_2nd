@@ -176,8 +176,8 @@ const GlowingHeart = ({ size = 200, isActive = true, count = 0 }) => {
           />
         </View>
 
-        {/* Count Text - 하트 중앙에 숫자 표시 */}
-        {count > 0 && (
+        {/* Count Text - 하트 중앙에 숫자 표시 (매칭 동의 활성화 시에만) */}
+        {isActive && count > 0 && (
           <View style={styles.countContainer}>
             <Text style={[styles.countText, { fontSize: size * 0.42 }]}>
               {count}
