@@ -6,6 +6,8 @@ from django.utils import timezone
 from django.conf import settings
 from django.core.cache import cache
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from django.contrib.auth import authenticate
 import random
 import string
@@ -1506,3 +1508,51 @@ def password_reset(request):
         'success': True,
         'message': '비밀번호가 재설정되었습니다.'
     }, status=status.HTTP_200_OK)
+
+
+class CustomTokenRefreshView(TokenRefreshView):
+    """
+    커스텀 토큰 갱신 뷰
+    사용자가 존재하지 않을 때 적절한 에러 응답 반환
+    """
+    def post(self, request, *args, **kwargs):
+        try:
+            return super().post(request, *args, **kwargs)
+        except (TokenError, InvalidToken) as e:
+            # 토큰이 유효하지 않은 경우 (만료되었거나 잘못된 토큰)
+            return Response(
+                {
+                    'detail': 'Token is invalid or expired. Please login again.',
+                    'code': 'token_not_valid'
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except AuthUser.DoesNotExist:
+            # 사용자가 존재하지 않는 경우 (사용자가 삭제되었거나 토큰이 잘못된 경우)
+            return Response(
+                {
+                    'detail': 'User not found. Please login again.',
+                    'code': 'user_not_found'
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except Exception as e:
+            # 기타 예외 처리 (DoesNotExist는 serializer 내부에서 발생할 수 있음)
+            # serializer의 validate 메서드에서 발생하는 예외를 잡기 위해
+            error_message = str(e)
+            if 'DoesNotExist' in error_message or 'matching query does not exist' in error_message:
+                return Response(
+                    {
+                        'detail': 'User not found. Please login again.',
+                        'code': 'user_not_found'
+                    },
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+            # 기타 예외
+            return Response(
+                {
+                    'detail': 'An error occurred while refreshing the token.',
+                    'code': 'token_refresh_error'
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

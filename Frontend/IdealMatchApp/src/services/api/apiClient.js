@@ -452,23 +452,37 @@ class ApiClient {
         longitude: formattedLon,
       };
       
-      // 디버그 모드에서 인증 토큰이 없으면 user_id 추가
+      // 인증 토큰 확인
       const token = await StorageService.getAccessToken();
-      const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
-      if (__DEV__ && !token && testUserId) {
-        requestBody.user_id = testUserId;
-        console.log('🔧 디버그 모드: user_id 추가', requestBody.user_id);
+      const requireAuth = token !== null; // 토큰이 있으면 인증 필요, 없으면 인증 불필요 (디버그 모드)
+      
+      // 토큰이 없을 때만 user_id 사용 (디버그 모드)
+      // 로그인한 사용자는 토큰으로 인증되므로 user_id를 사용하지 않음
+      if (__DEV__ && !token) {
+        // 명시적으로 전달된 userId가 있으면 사용, 없으면 TEST_USER_ID 사용
+        const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
+        if (testUserId) {
+          requestBody.user_id = testUserId;
+          console.log('🔧 디버그 모드: 토큰 없음, user_id 추가', requestBody.user_id);
+        } else {
+          console.warn('⚠️ 디버그 모드: 토큰이 없고 TEST_USER_ID도 설정되지 않았습니다.');
+          console.warn('   위치 업데이트를 위해 로그인이 필요하거나, config.js에서 TEST_USER_ID를 설정해주세요.');
+        }
       }
+      // 토큰이 있으면 user_id를 사용하지 않음 (로그인한 사용자로 인증됨)
 
       console.log('🌐 API 요청:', {
         url: `${this.baseURL}/users/location/update/`,
         method: 'POST',
         body: requestBody,
+        requireAuth: requireAuth,
+        hasToken: !!token,
       });
 
       const response = await this.request('/users/location/update/', {
         method: 'POST',
         body: JSON.stringify(requestBody),
+        requireAuth: requireAuth, // 토큰이 없으면 인증 불필요
       });
 
       console.log('✅ API 응답:', response);
