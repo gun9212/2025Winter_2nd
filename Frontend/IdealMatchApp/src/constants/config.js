@@ -7,7 +7,7 @@ const USE_SIMULATOR = false; // 실제 기기 테스트 시 false로 설정
 
 // Mac의 로컬 IP 주소 (실제 기기 테스트 시 사용)
 // 로컬 IP 확인: ifconfig | grep "inet " | grep -v 127.0.0.1
-const LOCAL_IP = '10.249.42.16';
+const LOCAL_IP = '10.249.110.39';
 
 export const CONFIG = {
   MATCH_RADIUS: 50, // 50m
@@ -28,7 +28,7 @@ export const CONFIG = {
     : 'https://your-production-api.com/api',  // 프로덕션
   // 테스트용 user_id (디버그 모드에서 사용)
   // 멀티 계정 테스트를 위해 필요 시 직접 숫자 ID를 넣어 특정 계정으로 강제 테스트하세요.
-  TEST_USER_ID: 1, // 기본값 1 (디버그 모드에서 user_id가 없을 때 사용)
+  TEST_USER_ID: 16, // 실제 존재하는 사용자 ID (rlawldus, 프로필 있음)
 };
 
 export const MOCK_AUTH_CODE = '123456';

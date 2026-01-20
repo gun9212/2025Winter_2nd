@@ -454,7 +454,7 @@ class ApiClient {
       
       // 디버그 모드에서 인증 토큰이 없으면 user_id 추가
       const token = await StorageService.getAccessToken();
-      const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID) || 1; // 기본값 1
+      const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
       if (__DEV__ && !token && testUserId) {
         requestBody.user_id = testUserId;
         console.log('🔧 디버그 모드: user_id 추가', requestBody.user_id);
@@ -545,7 +545,7 @@ class ApiClient {
       // 디버그 모드에서 user_id 추가
       const requestBody = { ...profileData };
       const token = await StorageService.getAccessToken();
-      const testUserId = (CONFIG && CONFIG.TEST_USER_ID) || 1;
+      const testUserId = CONFIG && CONFIG.TEST_USER_ID;
       
       if (__DEV__ && !token && testUserId) {
         requestBody.user_id = testUserId;
@@ -988,6 +988,114 @@ class ApiClient {
   }
 
   /**
+   * 매칭 가능한 사용자 수 조회
+   * API 12: GET /api/matching/matchable-count/
+   * @param {number} latitude - 현재 위치 위도
+   * @param {number} longitude - 현재 위치 경도
+   * @param {number} radius - 반경 (km 단위, 기본값 0.05 = 50m)
+   * @param {number} userId - 테스트용 user_id (디버그 모드)
+   * @returns {Promise<Object>} 매칭 가능한 사용자 수
+   */
+  async getMatchableCount(latitude, longitude, radius = 0.05, userId = null) {
+    try {
+      const params = new URLSearchParams({
+        latitude: latitude.toString(),
+        longitude: longitude.toString(),
+        radius: radius.toString(), // 0.05 = 50m
+      });
+
+      // 디버그 모드에서 인증 토큰이 없으면 user_id 추가
+      const token = await StorageService.getAccessToken();
+      const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
+      
+      if (!token) {
+        params.append('user_id', testUserId.toString());
+        console.log('🔧 토큰 없음, user_id 추가:', testUserId);
+      }
+
+      console.log('🌐 매칭 가능 인원 수 API 요청:', {
+        url: `${this.baseURL}/matching/matchable-count/?${params.toString()}`,
+        method: 'GET',
+      });
+
+      const response = await this.request(`/matching/matchable-count/?${params.toString()}`, {
+        method: 'GET',
+      });
+
+      console.log('✅ 매칭 가능 인원 수 API 응답:', response);
+
+      const data = response.data || response;
+      return {
+        success: true,
+        count: data.matchable_count || 0,
+        radius: data.radius || radius,
+        lastUpdated: data.last_count_updated_at,
+      };
+    } catch (error) {
+      console.error('❌ 매칭 가능 인원 수 조회 실패:', error);
+      return {
+        success: false,
+        count: 0,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
+   * 활성 매칭 수 조회 (50m 이내)
+   * GET /api/matching/active-count/
+   * @param {number} latitude - 현재 위치 위도
+   * @param {number} longitude - 현재 위치 경도
+   * @param {number} maxDistance - 최대 거리 (km 단위, 기본값 0.05 = 50m)
+   * @param {number} userId - 테스트용 user_id (디버그 모드)
+   * @returns {Promise<Object>} 활성 매칭 수
+   */
+  async getActiveMatchCount(latitude, longitude, maxDistance = 0.05, userId = null) {
+    try {
+      const params = new URLSearchParams({
+        latitude: latitude.toString(),
+        longitude: longitude.toString(),
+        max_distance: maxDistance.toString(), // 0.05 = 50m
+      });
+
+      // 토큰이 없을 때만 user_id 추가
+      const token = await StorageService.getAccessToken();
+      const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
+      
+      if (!token && testUserId) {
+        params.append('user_id', testUserId.toString());
+        console.log('🔧 토큰 없음, user_id 추가:', testUserId);
+      }
+
+      console.log('🌐 활성 매칭 수 API 요청:', {
+        url: `${this.baseURL}/matching/active-count/?${params.toString()}`,
+        method: 'GET',
+      });
+
+      const response = await this.request(`/matching/active-count/?${params.toString()}`, {
+        method: 'GET',
+      });
+
+      console.log('✅ 활성 매칭 수 API 응답:', response);
+
+      const data = response.data || response;
+      return {
+        success: true,
+        count: data.count || 0,
+        matches: data.matches || [],
+        maxDistance: data.max_distance_km || maxDistance,
+      };
+    } catch (error) {
+      console.error('❌ 활성 매칭 수 조회 실패:', error);
+      return {
+        success: false,
+        count: 0,
+        error: error.message,
+      };
+    }
+  }
+
+  /**
    * 매칭 동의 업데이트
    * API 14: POST /api/users/consent/
    * @param {boolean} matchingConsent - 매칭 동의 여부 (true/false)
@@ -1003,7 +1111,7 @@ class ApiClient {
       
       // 디버그 모드에서 인증 토큰이 없으면 user_id 추가
       const token = await StorageService.getAccessToken();
-      const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID) || 1; // 기본값 1
+      const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
       if (__DEV__ && !token && testUserId) {
         requestBody.user_id = testUserId;
         console.log('🔧 디버그 모드: user_id 추가', requestBody.user_id);
@@ -1058,14 +1166,14 @@ class ApiClient {
 
       // 디버그 모드에서 인증 토큰이 없으면 user_id 추가
       const token = await StorageService.getAccessToken();
-      const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID) || 1; // 기본값 1 추가
+      const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
       
-      // 토큰이 없으면 무조건 user_id 추가 (프로덕션에서도 안전)
-      if (!token) {
+      // 토큰이 없을 때만 user_id 추가 (로그인하면 토큰 사용)
+      if (!token && testUserId) {
         params.append('user_id', testUserId.toString());
         console.log('🔧 토큰 없음, user_id 추가:', testUserId);
-      } else {
-        console.log('🔧 토큰 있음, user_id 추가 안 함');
+      } else if (token) {
+        console.log('🔧 토큰 있음, user_id 추가 안 함 (JWT 토큰 사용)');
       }
 
       console.log('🌐 매칭 체크 API 요청:', {

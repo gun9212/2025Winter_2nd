@@ -32,6 +32,8 @@ const MainScreen = ({ navigation }) => {
   // 매칭 동의 상태
   const [matchingConsent, setMatchingConsent] = useState(false);
   const [isUpdatingConsent, setIsUpdatingConsent] = useState(false);
+  // 매칭 가능한 인원 수 (50m 반경)
+  const [matchableCount, setMatchableCount] = useState(0);
   const matchingIntervalRef = useRef(null);
   const hasNotifiedRef = useRef(false);
   const appState = useRef(AppState.currentState);
@@ -39,6 +41,10 @@ const MainScreen = ({ navigation }) => {
   const isInitializingRef = useRef(false);
   // 중복 알림 방지를 위한 매칭 ID 추적
   const notifiedMatchesRef = useRef(new Set());
+  // 디바운싱을 위한 마지막 매칭 체크 시간 추적
+  const lastMatchCheckTimeRef = useRef(0);
+  // 백그라운드 watchLocation ID
+  const backgroundWatchIdRef = useRef(null);
 
   useEffect(() => {
     // 로그인하지 않은 경우 위치 업데이트 하지 않음
@@ -170,7 +176,9 @@ const MainScreen = ({ navigation }) => {
 
       // 초기 위치를 서버에 전송
       await sendLocationToServer(currentLocation);
-      await searchMatches(currentLocation);
+      await searchMatchesDebounced(currentLocation, true); // 초기 실행은 강제 체크
+      // 초기 활성 매칭 수 조회
+      await fetchActiveMatches(currentLocation);
 
       // Mock Location 모드에서는 watchLocation을 사용하지 않음 (5초마다 불필요한 콜백 방지)
       // 실제 GPS 모드에서만 watchLocation 사용
@@ -180,9 +188,12 @@ const MainScreen = ({ navigation }) => {
         const id = locationService.watchLocation(async (newLocation) => {
           console.log('📍 위치 업데이트됨:', newLocation);
           setLocation(newLocation);
-          // 위치가 변경될 때마다 서버에만 전송 (매칭 검색은 setInterval에서만 수행)
+          // 위치가 변경될 때마다 서버에 전송
           await sendLocationToServer(newLocation);
-          // searchMatches는 호출하지 않음 (중복 방지)
+          // 디바운싱된 매칭 체크 (최소 30초 간격 보장)
+          await searchMatchesDebounced(newLocation);
+          // 활성 매칭 수도 조회
+          await fetchActiveMatches(newLocation);
         });
         setWatchId(id);
         console.log('✅ 위치 감지 시작됨 (watchId:', id, ')');
@@ -207,7 +218,8 @@ const MainScreen = ({ navigation }) => {
           const latestLocation = await locationService.getCurrentLocation();
           // 주기적 검색 시에도 서버에 위치 전송
           await sendLocationToServer(latestLocation);
-          await searchMatches(latestLocation);
+          // 디바운싱된 매칭 체크 (최소 30초 간격 보장)
+          await searchMatchesDebounced(latestLocation);
         } catch (error) {
           console.error('주기적 매칭 검색 오류:', error);
         }
@@ -226,10 +238,49 @@ const MainScreen = ({ navigation }) => {
     }
   };
 
+  /**
+   * 디바운싱된 매칭 체크 (최소 간격 보장)
+   * 최소 30초 간격으로만 매칭 체크를 수행하여 중복 호출 방지
+   */
+  const searchMatchesDebounced = async (searchLocation, forceCheck = false) => {
+    // 매칭 동의가 OFF인 경우 매칭 검색 하지 않음
+    if (!matchingConsent) {
+      console.log('⚠️ 매칭 동의 OFF - 매칭 검색 중단');
+      return;
+    }
+
+    // 강제 체크가 아니면 디바운싱 확인
+    if (!forceCheck) {
+      const now = Date.now();
+      const timeSinceLastCheck = now - lastMatchCheckTimeRef.current;
+      const MIN_MATCH_CHECK_INTERVAL = FOREGROUND_INTERVAL; // 30초
+
+      if (timeSinceLastCheck < MIN_MATCH_CHECK_INTERVAL) {
+        console.log(
+          `⏸️ 매칭 체크 스킵 (${Math.floor(timeSinceLastCheck / 1000)}초 전에 실행됨, 최소 ${MIN_MATCH_CHECK_INTERVAL / 1000}초 간격 필요)`
+        );
+        return; // 스킵
+      }
+
+      // 마지막 체크 시간 업데이트
+      lastMatchCheckTimeRef.current = now;
+      console.log(
+        `✅ 매칭 체크 실행 (${Math.floor(timeSinceLastCheck / 1000)}초 경과)`
+      );
+    } else {
+      console.log('✅ 매칭 체크 실행 (강제 체크)');
+      lastMatchCheckTimeRef.current = Date.now();
+    }
+
+    // 실제 매칭 검색 수행
+    await searchMatches(searchLocation);
+  };
+
   const searchMatches = async (searchLocation) => {
     // 매칭 동의가 OFF인 경우 매칭 검색 하지 않음
     if (!matchingConsent) {
       console.log('⚠️ 매칭 동의 OFF - 매칭 검색 중단');
+      setMatchableCount(0);
       return;
     }
     
@@ -245,6 +296,9 @@ const MainScreen = ({ navigation }) => {
       );
       
       setMatchResult(result);
+
+      // 매칭 체크 후 활성 매칭 수도 함께 조회
+      await fetchActiveMatches(searchLocation);
 
       // 매칭 발생 시 로컬 알림 표시 (중복 방지)
       // has_new_match가 true일 때만 알림 표시 (기존 매칭은 제외)
@@ -306,7 +360,17 @@ const MainScreen = ({ navigation }) => {
       if (location) {
         // 포어그라운드 전환 시에도 위치를 서버에 전송
         await sendLocationToServer(location);
-        await searchMatches(location);
+        // 포그라운드 전환 시 즉시 체크
+        await searchMatchesDebounced(location, true);
+        // 활성 매칭 수도 조회
+        await fetchActiveMatches(location);
+      }
+
+      // 백그라운드 watchLocation 정리
+      if (backgroundWatchIdRef.current !== null) {
+        locationService.stopWatching(backgroundWatchIdRef.current);
+        backgroundWatchIdRef.current = null;
+        console.log('🛑 백그라운드 위치 감지 중단 (포그라운드 전환)');
       }
     } else if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
       console.log('🔒 백그라운드 전환 - 백그라운드 매칭 시작 (서버 신호 확인)');
@@ -315,11 +379,45 @@ const MainScreen = ({ navigation }) => {
         await sendLocationToServer(location);
       }
       
-      // 백그라운드에서 주기적으로 서버 신호 확인
+      // 백그라운드에서 위치 변경 감지 시작 (watchLocation)
+      startBackgroundLocationWatch();
+      
+      // 백그라운드에서 주기적으로 서버 신호 확인 (setInterval)
       startBackgroundMatching();
     }
 
     appState.current = nextAppState;
+  };
+
+  /**
+   * 활성 매칭 수 조회 (50m 이내)
+   * 실제로 매칭이 완료된 사용자 중 50m 이내에 있는 인원 수
+   */
+  const fetchActiveMatches = async (searchLocation) => {
+    if (!matchingConsent || !searchLocation) {
+      setMatchableCount(0);
+      return;
+    }
+
+    try {
+      // 활성 매칭 수 조회 (50m 이내)
+      const result = await apiClient.getActiveMatchCount(
+        searchLocation.latitude,
+        searchLocation.longitude,
+        0.05 // 50m 반경
+      );
+
+      if (result.success) {
+        setMatchableCount(result.count || 0);
+        console.log(`📊 활성 매칭 수: ${result.count}명 (50m 이내)`);
+      } else {
+        setMatchableCount(0);
+        console.log('⚠️ 활성 매칭 수 조회 실패, 0으로 설정');
+      }
+    } catch (error) {
+      console.error('❌ 활성 매칭 수 조회 오류:', error);
+      setMatchableCount(0);
+    }
   };
 
   const sendLocationToServer = async (currentLocation) => {
@@ -361,6 +459,48 @@ const MainScreen = ({ navigation }) => {
     }
   };
 
+  /**
+   * 백그라운드에서 위치 변경 감지 시작 (watchLocation)
+   * 위치가 변경될 때마다 디바운싱된 매칭 체크 수행
+   */
+  const startBackgroundLocationWatch = () => {
+    // 매칭 동의가 OFF면 백그라운드 위치 감지 중지
+    if (!matchingConsent) {
+      console.log('⚠️ 매칭 동의 OFF - 백그라운드 위치 감지 중지');
+      return;
+    }
+
+    // 이미 백그라운드 watchLocation이 시작되어 있으면 중지
+    if (backgroundWatchIdRef.current !== null) {
+      locationService.stopWatching(backgroundWatchIdRef.current);
+      backgroundWatchIdRef.current = null;
+    }
+
+    const USE_MOCK_LOCATION = require('../../constants/config').USE_MOCK_LOCATION;
+    if (USE_MOCK_LOCATION) {
+      console.log('🧪 Mock Location 모드: 백그라운드 watchLocation 비활성화');
+      return;
+    }
+
+    console.log('🎯 백그라운드 위치 감지 시작 (위치 변경 시 디바운싱된 매칭 체크)');
+
+    const watchId = locationService.watchLocation(async (newLocation) => {
+      console.log('📍 백그라운드: 위치 업데이트됨:', newLocation);
+      
+      // 위치 서버에 전송
+      await sendLocationToServer(newLocation);
+      
+      // 디바운싱된 매칭 체크 (최소 30초 간격 보장)
+      await searchMatchesDebounced(newLocation);
+      
+      // 활성 매칭 수도 조회
+      await fetchActiveMatches(newLocation);
+    });
+
+    backgroundWatchIdRef.current = watchId;
+    console.log('✅ 백그라운드 위치 감지 시작됨 (watchId:', watchId, ')');
+  };
+
   const startBackgroundMatching = () => {
     // 매칭 동의가 OFF면 백그라운드 매칭 중지
     if (!matchingConsent) {
@@ -387,44 +527,12 @@ const MainScreen = ({ navigation }) => {
         // 위치 서버에 전송
         await sendLocationToServer(currentLocation);
         
-        // 서버에서 매칭 신호 확인 (실제 Django API 호출)
-        const result = await apiClient.checkMatches(
-          currentLocation.latitude,
-          currentLocation.longitude,
-          1.0
-        );
+        // 디바운싱된 매칭 체크 (최소 30초 간격 보장)
+        await searchMatchesDebounced(currentLocation);
         
-        // 매칭 발생 시 로컬 알림 표시 (새 매칭만)
-        // has_new_match가 true일 때만 알림 표시 (기존 매칭은 제외)
-        if (result.matched && result.matches.length > 0 && result.isNewMatch) {
-          const bestMatch = result.matches[0];
-          const matchId = bestMatch.id || `${bestMatch.user1_id || bestMatch.user1?.id || 'unknown'}_${bestMatch.user2_id || bestMatch.user2?.id || 'unknown'}`;
-          
-          // 이미 알림을 보낸 매칭인지 확인
-          if (notifiedMatchesRef.current.has(matchId)) {
-            console.log('ℹ️ 백그라운드: 이미 알림을 보낸 매칭:', matchId);
-            return;
-          }
-          
-          console.log('💝 백그라운드에서 새 매칭 발견! 로컬 알림 표시:', matchId);
-          console.log('📊 매칭 정보:', {
-            id: bestMatch.id,
-            user1_id: bestMatch.user1_id || bestMatch.user1?.id,
-            user2_id: bestMatch.user2_id || bestMatch.user2?.id,
-          });
-          
-          // 알림 보낸 매칭 기록
-          notifiedMatchesRef.current.add(matchId);
-          
-          // 로컬 알림 표시 (백그라운드에서도 동작)
-          await notificationService.showMatchNotification(bestMatch);
-          
-          // 햅틱 피드백 (백그라운드에서도 가능)
-          hapticService.heartbeat();
-        } else if (result.matched && result.matches.length > 0 && !result.isNewMatch) {
-          // 기존 매칭이지만 새 매칭이 아닌 경우
-          console.log('ℹ️ 백그라운드: 기존 매칭 (알림 표시 안 함)');
-        }
+        // 활성 매칭 수도 조회
+        await fetchActiveMatches(currentLocation);
+        
       } catch (error) {
         console.error('❌ 백그라운드 매칭 체크 오류:', error);
       }
@@ -478,6 +586,13 @@ const MainScreen = ({ navigation }) => {
             locationService.stopWatching(watchId);
             setWatchId(null);
           }
+          // 백그라운드 위치 감지 중단
+          if (backgroundWatchIdRef.current !== null) {
+            locationService.stopWatching(backgroundWatchIdRef.current);
+            backgroundWatchIdRef.current = null;
+          }
+          // 매칭 가능 인원 수 초기화
+          setMatchableCount(0);
         }
         
         // 햅틱 피드백
@@ -565,7 +680,7 @@ const MainScreen = ({ navigation }) => {
           
           <View style={styles.heartContainer}>
             {/* 3D Glowing Heart with Pulsing Animation */}
-            <GlowingHeart size={220} isActive={matchingConsent} />
+            <GlowingHeart size={220} isActive={matchingConsent} count={matchableCount} />
             
             {/* 업데이트 중 인디케이터 */}
             {isUpdatingConsent && (

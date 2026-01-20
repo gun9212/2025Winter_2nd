@@ -459,11 +459,27 @@ def update_location(request):
                     # user_id로 User 프로필 찾기
                     auth_user = AuthUser.objects.get(id=user_id)
                     user_profile = auth_user.profile
-                except (AuthUser.DoesNotExist, User.DoesNotExist):
+                    print(f"✅ 사용자 프로필 찾음: {user_profile.user.username}")
+                except AuthUser.DoesNotExist:
+                    print(f"❌ AuthUser {user_id}가 존재하지 않습니다.")
                     return Response({
                         'success': False,
-                        'error': f'user_id {user_id}에 해당하는 프로필이 없습니다.'
+                        'error': f'user_id {user_id}에 해당하는 사용자가 없습니다.'
                     }, status=status.HTTP_404_NOT_FOUND)
+                except User.DoesNotExist:
+                    print(f"❌ User 프로필이 없습니다 (user_id: {user_id})")
+                    return Response({
+                        'success': False,
+                        'error': f'user_id {user_id}에 해당하는 프로필이 없습니다. 먼저 프로필을 생성해주세요.'
+                    }, status=status.HTTP_404_NOT_FOUND)
+                except Exception as e:
+                    print(f"❌ 프로필 조회 중 예외 발생: {str(e)}")
+                    import traceback
+                    traceback.print_exc()
+                    return Response({
+                        'success': False,
+                        'error': f'프로필 조회 중 오류가 발생했습니다: {str(e)}'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             else:
                 # 정상 모드: 인증된 사용자 사용
                 try:

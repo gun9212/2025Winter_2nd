@@ -1,10 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated, Easing } from 'react-native';
+import { View, StyleSheet, Animated, Easing, Text } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 
-const GlowingHeart = ({ size = 200, isActive = true }) => {
+const GlowingHeart = ({ size = 200, isActive = true, count = 0 }) => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
 
@@ -175,6 +175,15 @@ const GlowingHeart = ({ size = 200, isActive = true }) => {
             }}
           />
         </View>
+
+        {/* Count Text - 하트 중앙에 숫자 표시 */}
+        {count > 0 && (
+          <View style={styles.countContainer}>
+            <Text style={[styles.countText, { fontSize: size * 0.42 }]}>
+              {count}
+            </Text>
+          </View>
+        )}
       </Animated.View>
     </View>
   );
@@ -216,6 +225,25 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(255, 105, 180, 0.6)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 20,
+  },
+  countContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    pointerEvents: 'none', // 터치 이벤트 방해 안 함
+  },
+  countText: {
+    fontFamily: 'System',
+    fontWeight: '700',
+    color: 'white',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    letterSpacing: -2,
   },
 });
 
