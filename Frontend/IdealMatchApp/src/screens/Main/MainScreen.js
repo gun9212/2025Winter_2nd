@@ -537,6 +537,8 @@ const MainScreen = ({ navigation }) => {
       // Android: 백그라운드 Foreground Service 중단 (포어그라운드에서는 JS 로직 사용)
       if (Platform.OS === 'android') {
         stopAndroidForegroundMatching();
+        // 포그라운드: 고정밀/빠른 위치 설정
+        locationService.applyAndroidNativeConfig('foreground');
       }
       
       if (backgroundIntervalRef.current) {
@@ -595,6 +597,8 @@ const MainScreen = ({ navigation }) => {
       if (Platform.OS === 'android') {
         // Android는 JS 타이머 대신 Foreground Service로 백그라운드 동작 보장
         console.log('🤖 Android: Foreground Service 시작');
+        // 백그라운드: 절약 설정(혹시 JS getCurrentLocation이 호출되더라도 저전력으로)
+        locationService.applyAndroidNativeConfig('background');
         await startAndroidForegroundMatching({
           // 배터리 고려 기본 1분 (필요시 조정)
           intervalMs: 60000,
@@ -641,6 +645,9 @@ const MainScreen = ({ navigation }) => {
           startBackgroundLocationWatch();
           console.log('✅ iOS 백그라운드 설정 완료 (inactive → background)');
         }, 500); // 0.5초 딜레이
+      } else if (Platform.OS === 'android') {
+        // Android: inactive → background도 절약 설정 적용
+        locationService.applyAndroidNativeConfig('background');
       }
     }
 

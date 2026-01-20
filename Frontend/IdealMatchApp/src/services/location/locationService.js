@@ -3,40 +3,83 @@ import { Platform, PermissionsAndroid, Alert, AppState, NativeModules, NativeEve
 import { USE_MOCK_LOCATION, DEFAULT_TEST_LOCATION } from '../../constants/config';
 
 const IOS_NATIVE_WATCH_ID = 'ios-native-location-watch';
+const ANDROID_NATIVE_WATCH_ID = 'android-native-location-watch';
 
 export class LocationService {
   constructor() {
     this.watchId = null;
     this.mockLocationIndex = 0; // 테스트 위치 시뮬레이션용 인덱스
-    this.iosSubscription = null;
-    this.iosEmitter = null;
+    this.nativeSubscription = null;
+    this.nativeEmitter = null;
     
-    // iOS 네이티브 위치 엔진(4-A) 초기 설정
-    if (Platform.OS === 'ios') {
-      this.configureIOSNativeLocation();
-    }
+    // iOS/Android 네이티브 위치 엔진(4-A) 초기 설정
+    this.configureNativeLocation();
   }
   
   /**
-   * iOS 네이티브 위치 엔진 설정 (4-A)
-   * - 실제 위치 수신은 JS Geolocation이 아니라 iOS 네이티브 모듈이 담당
+   * Android 전용: 포그라운드/백그라운드에 따라 네이티브 위치 설정을 다르게 적용
+   * - 포그라운드: 고정밀 + 빠른 갱신(사용자 체감)
+   * - 백그라운드: 균형 정확도 + 느린 갱신(배터리)
+   *
+   * 참고: 실제 “백그라운드 장시간 보장”은 Foreground Service가 담당(프로젝트에 이미 존재).
+   */
+  applyAndroidNativeConfig(profile = 'foreground') {
+    if (Platform.OS !== 'android') return;
+    try {
+      const { LocationConfigModule } = NativeModules;
+      if (!LocationConfigModule?.configure) return;
+
+      if (profile === 'background') {
+        LocationConfigModule.configure({
+          desiredAccuracy: 'balanced',
+          intervalMs: 60000, // 60초
+          fastestIntervalMs: 30000, // 30초
+          distanceFilterMeters: 25, // 25m 이상 이동 시 위주
+        });
+        console.log('✅ Android native 위치 설정 적용: background(절약)');
+      } else {
+        LocationConfigModule.configure({
+          desiredAccuracy: 'best',
+          intervalMs: 5000, // 5초
+          fastestIntervalMs: 5000,
+          distanceFilterMeters: 0,
+        });
+        console.log('✅ Android native 위치 설정 적용: foreground(고정밀)');
+      }
+    } catch (error) {
+      console.warn('⚠️ Android native 위치 설정 적용 실패:', error);
+    }
+  }
+
+  /**
+   * iOS/Android 네이티브 위치 엔진 설정 (4-A)
+   * - 실제 위치 수신은 네이티브 모듈(LocationConfigModule)이 담당
    * - JS는 이벤트(locationUpdated)를 구독
    */
-  configureIOSNativeLocation() {
+  configureNativeLocation() {
     try {
       const { LocationConfigModule } = NativeModules;
       
       if (LocationConfigModule) {
         // 이벤트 emitter 준비
-        this.iosEmitter = new NativeEventEmitter(LocationConfigModule);
+        this.nativeEmitter = new NativeEventEmitter(LocationConfigModule);
 
         // 네이티브 기본 설정 적용
         if (LocationConfigModule.configure) {
-          LocationConfigModule.configure({
-            showsBackgroundLocationIndicator: true,
-            desiredAccuracy: 'best',
-            distanceFilter: 0,
-          });
+          LocationConfigModule.configure(Platform.OS === 'ios'
+            ? {
+                showsBackgroundLocationIndicator: true,
+                desiredAccuracy: 'best',
+                distanceFilter: 0,
+              }
+            : {
+                // Android: ms/m 단위로 설정
+                desiredAccuracy: 'best',
+                intervalMs: 5000,
+                fastestIntervalMs: 5000,
+                distanceFilterMeters: 0,
+              }
+          );
         }
 
         // 권한 요청(Always) 트리거 (상태에 따라 프롬프트가 뜰 수 있음)
@@ -44,13 +87,19 @@ export class LocationService {
           LocationConfigModule.requestAlwaysAuthorization();
         }
 
-        console.log('✅ iOS 네이티브 위치 엔진 설정 완료 (LocationConfigModule)');
+        console.log(`✅ ${Platform.OS} 네이티브 위치 엔진 설정 완료 (LocationConfigModule)`);
+
+        // Android는 앱 시작 시점 AppState에 따라 프로파일 적용
+        if (Platform.OS === 'android') {
+          const state = AppState.currentState;
+          this.applyAndroidNativeConfig(state === 'active' ? 'foreground' : 'background');
+        }
       } else {
         console.warn('⚠️ LocationConfigModule이 없습니다.');
-        console.warn('   iOS 백그라운드 안정화를 위해 네이티브 모듈이 필요합니다.');
+        console.warn('   네이티브 위치 엔진(4-A)을 사용하려면 모듈이 필요합니다.');
       }
     } catch (error) {
-      console.error('❌ iOS 네이티브 위치 엔진 설정 실패:', error);
+      console.error('❌ 네이티브 위치 엔진 설정 실패:', error);
     }
   }
 
@@ -92,7 +141,7 @@ export class LocationService {
       }
 
       // Android 권한 요청
-      const granted = await PermissionsAndroid.request(
+      const fineGranted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
         {
           title: '위치 권한 요청',
@@ -103,7 +152,30 @@ export class LocationService {
         }
       );
 
-      return granted === PermissionsAndroid.RESULTS.GRANTED;
+      if (fineGranted !== PermissionsAndroid.RESULTS.GRANTED) {
+        return false;
+      }
+
+      // Android 10+(API 29): 백그라운드 위치 권한이 있으면 안정적
+      // (OS 정책상 바로 허용이 안 될 수 있어, 거부되면 설정 유도)
+      if (Platform.Version >= 29) {
+        const bgGranted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+          {
+            title: '백그라운드 위치 권한 필요',
+            message: '백그라운드에서도 매칭을 위해 위치 권한(항상 허용)이 필요합니다.',
+            buttonNeutral: '나중에',
+            buttonNegative: '거부',
+            buttonPositive: '허용',
+          }
+        );
+
+        if (bgGranted !== PermissionsAndroid.RESULTS.GRANTED) {
+          console.warn('⚠️ Android 백그라운드 위치 권한 거부됨 (포그라운드 서비스로 일부 동작 가능)');
+        }
+      }
+
+      return true;
     } catch (error) {
       console.error('위치 권한 요청 오류:', error);
       return false;
@@ -128,17 +200,17 @@ export class LocationService {
       return Promise.resolve(mockLocation);
     }
 
-    // iOS: 네이티브 위치 엔진(4-A) 사용 (가능한 경우)
-    if (Platform.OS === 'ios') {
+    // iOS/Android: 네이티브 위치 엔진(4-A) 사용 (가능한 경우)
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
       try {
         const { LocationConfigModule } = NativeModules;
         if (LocationConfigModule?.getCurrentLocation) {
           const location = await LocationConfigModule.getCurrentLocation();
-          console.log(`✅ 현재 위치(iOS native)${forceFresh ? ' (새 위치)' : ''}:`, location);
+          console.log(`✅ 현재 위치(${Platform.OS} native)${forceFresh ? ' (새 위치)' : ''}:`, location);
           return location;
         }
       } catch (error) {
-        console.warn('⚠️ iOS native getCurrentLocation 실패, JS Geolocation으로 fallback:', error);
+        console.warn(`⚠️ ${Platform.OS} native getCurrentLocation 실패, JS Geolocation으로 fallback:`, error);
       }
     }
 
@@ -189,20 +261,20 @@ export class LocationService {
       return this.watchId;
     }
 
-    // iOS: 네이티브 이벤트 기반 위치 엔진(4-A)
-    if (Platform.OS === 'ios') {
+    // iOS/Android: 네이티브 이벤트 기반 위치 엔진(4-A)
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
       const { LocationConfigModule } = NativeModules;
 
-      if (!LocationConfigModule || !this.iosEmitter || !LocationConfigModule.start) {
-        console.warn('⚠️ iOS native location 모듈이 준비되지 않았습니다. JS Geolocation으로 fallback합니다.');
+      if (!LocationConfigModule || !this.nativeEmitter || !LocationConfigModule.start) {
+        console.warn(`⚠️ ${Platform.OS} native location 모듈이 준비되지 않았습니다. JS Geolocation으로 fallback합니다.`);
       } else {
         // 표준 업데이트를 기본으로 사용 (네이티브 쪽에서 significant-change를 보조 채널로 함께 사용)
         const mode = 'standard';
 
         // 이벤트 구독
-        this.iosSubscription = this.iosEmitter.addListener('locationUpdated', (location) => {
+        this.nativeSubscription = this.nativeEmitter.addListener('locationUpdated', (location) => {
           const appState = AppState.currentState;
-          console.log(`📍 위치 업데이트 (iOS native) [${appState}]:`, {
+          console.log(`📍 위치 업데이트 (${Platform.OS} native) [${appState}]:`, {
             latitude: Number(location.latitude).toFixed(6),
             longitude: Number(location.longitude).toFixed(6),
             accuracy: location.accuracy != null ? Number(location.accuracy).toFixed(1) : undefined,
@@ -213,9 +285,9 @@ export class LocationService {
 
         // 시작
         LocationConfigModule.start({ mode });
-        this.watchId = IOS_NATIVE_WATCH_ID;
+        this.watchId = Platform.OS === 'ios' ? IOS_NATIVE_WATCH_ID : ANDROID_NATIVE_WATCH_ID;
 
-        console.log(`🎯 iOS native 위치 감지 시작 (mode: ${mode}, watchId: ${this.watchId})`);
+        console.log(`🎯 ${Platform.OS} native 위치 감지 시작 (mode: ${mode}, watchId: ${this.watchId})`);
         return this.watchId;
       }
     }
@@ -326,20 +398,23 @@ export class LocationService {
    */
   stopWatching(watchId) {
     if (watchId !== null && watchId !== undefined) {
-      // iOS: 네이티브 위치 엔진(4-A) 중단
-      if (Platform.OS === 'ios' && watchId === IOS_NATIVE_WATCH_ID) {
+      // iOS/Android: 네이티브 위치 엔진(4-A) 중단
+      if (
+        (Platform.OS === 'ios' && watchId === IOS_NATIVE_WATCH_ID) ||
+        (Platform.OS === 'android' && watchId === ANDROID_NATIVE_WATCH_ID)
+      ) {
         try {
-          if (this.iosSubscription) {
-            this.iosSubscription.remove();
-            this.iosSubscription = null;
+          if (this.nativeSubscription) {
+            this.nativeSubscription.remove();
+            this.nativeSubscription = null;
           }
           const { LocationConfigModule } = NativeModules;
           if (LocationConfigModule?.stop) {
             LocationConfigModule.stop();
           }
-          console.log('🛑 iOS native 위치 감지 중단 (watchId:', watchId, ')');
+          console.log(`🛑 ${Platform.OS} native 위치 감지 중단 (watchId:`, watchId, ')');
         } catch (error) {
-          console.error('❌ iOS native 위치 감지 중단 실패:', error);
+          console.error(`❌ ${Platform.OS} native 위치 감지 중단 실패:`, error);
         } finally {
           if (watchId === this.watchId) {
             this.watchId = null;
