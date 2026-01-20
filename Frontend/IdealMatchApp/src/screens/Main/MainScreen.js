@@ -32,7 +32,7 @@ const MainScreen = ({ navigation }) => {
   // 매칭 동의 상태
   const [matchingConsent, setMatchingConsent] = useState(false);
   const [isUpdatingConsent, setIsUpdatingConsent] = useState(false);
-  // 매칭 가능한 인원 수 (50m 반경)
+  // 매칭 가능한 인원 수 (10m 반경)
   const [matchableCount, setMatchableCount] = useState(0);
   const matchingIntervalRef = useRef(null);
   const hasNotifiedRef = useRef(false);
@@ -65,9 +65,7 @@ const MainScreen = ({ navigation }) => {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
 
     return () => {
-      if (watchId !== null) {
-        locationService.stopWatching(watchId);
-      }
+      // watchLocation 제거됨 - setInterval만 사용
       if (matchingIntervalRef.current) {
         clearInterval(matchingIntervalRef.current);
         matchingIntervalRef.current = null;
@@ -180,26 +178,8 @@ const MainScreen = ({ navigation }) => {
       // 초기 활성 매칭 수 조회
       await fetchActiveMatches(currentLocation);
 
-      // Mock Location 모드에서는 watchLocation을 사용하지 않음 (5초마다 불필요한 콜백 방지)
-      // 실제 GPS 모드에서만 watchLocation 사용
-      const USE_MOCK_LOCATION = require('../../constants/config').USE_MOCK_LOCATION;
-      if (!USE_MOCK_LOCATION) {
-        console.log('🎯 위치 변경 감지 시작...');
-        const id = locationService.watchLocation(async (newLocation) => {
-          console.log('📍 위치 업데이트됨:', newLocation);
-          setLocation(newLocation);
-          // 위치가 변경될 때마다 서버에 전송
-          await sendLocationToServer(newLocation);
-          // 디바운싱된 매칭 체크 (최소 30초 간격 보장)
-          await searchMatchesDebounced(newLocation);
-          // 활성 매칭 수도 조회
-          await fetchActiveMatches(newLocation);
-        });
-        setWatchId(id);
-        console.log('✅ 위치 감지 시작됨 (watchId:', id, ')');
-      } else {
-        console.log('🧪 Mock Location 모드: watchLocation 비활성화 (setInterval만 사용)');
-      }
+      // watchLocation 제거: setInterval로 통일 (5초 간격)
+      console.log('✅ setInterval로 위치 추적 및 매칭 수행 (5초 간격)');
 
       // 기존 interval이 있으면 제거
       if (matchingIntervalRef.current) {
@@ -213,13 +193,16 @@ const MainScreen = ({ navigation }) => {
       console.log(`📊 Interval ID: ${matchingIntervalRef.current}`);
       
       matchingIntervalRef.current = setInterval(async () => {
-        console.log('⏰ 주기적 매칭 검색... (setInterval에서 호출)');
+        console.log('⏰ 주기적 매칭 검색... (setInterval에서 호출, 5초 간격)');
         try {
           const latestLocation = await locationService.getCurrentLocation();
+          setLocation(latestLocation);
           // 주기적 검색 시에도 서버에 위치 전송
           await sendLocationToServer(latestLocation);
-          // 디바운싱된 매칭 체크 (최소 30초 간격 보장)
+          // 디바운싱된 매칭 체크 (최소 5초 간격 보장)
           await searchMatchesDebounced(latestLocation);
+          // 활성 매칭 수도 조회
+          await fetchActiveMatches(latestLocation);
         } catch (error) {
           console.error('주기적 매칭 검색 오류:', error);
         }
@@ -240,7 +223,7 @@ const MainScreen = ({ navigation }) => {
 
   /**
    * 디바운싱된 매칭 체크 (최소 간격 보장)
-   * 최소 30초 간격으로만 매칭 체크를 수행하여 중복 호출 방지
+   * 최소 5초 간격으로만 매칭 체크를 수행하여 중복 호출 방지
    */
   const searchMatchesDebounced = async (searchLocation, forceCheck = false) => {
     // 매칭 동의가 OFF인 경우 매칭 검색 하지 않음
@@ -253,7 +236,7 @@ const MainScreen = ({ navigation }) => {
     if (!forceCheck) {
       const now = Date.now();
       const timeSinceLastCheck = now - lastMatchCheckTimeRef.current;
-      const MIN_MATCH_CHECK_INTERVAL = FOREGROUND_INTERVAL; // 30초
+      const MIN_MATCH_CHECK_INTERVAL = FOREGROUND_INTERVAL; // 5초
 
       if (timeSinceLastCheck < MIN_MATCH_CHECK_INTERVAL) {
         console.log(
@@ -292,7 +275,7 @@ const MainScreen = ({ navigation }) => {
       const result = await apiClient.checkMatches(
         searchLocation.latitude,
         searchLocation.longitude,
-        1.0 // 1000m (1km) 반경
+        0.01 // 10m 반경
       );
       
       setMatchResult(result);
@@ -383,12 +366,7 @@ const MainScreen = ({ navigation }) => {
         await fetchActiveMatches(location);
       }
 
-      // 백그라운드 watchLocation 정리
-      if (backgroundWatchIdRef.current !== null) {
-        locationService.stopWatching(backgroundWatchIdRef.current);
-        backgroundWatchIdRef.current = null;
-        console.log('🛑 백그라운드 위치 감지 중단 (포그라운드 전환)');
-      }
+      // watchLocation 제거됨 - setInterval만 사용하므로 정리 불필요
     } else if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
       console.log('🔒 백그라운드 전환 - 백그라운드 매칭 시작 (서버 신호 확인)');
       
@@ -396,10 +374,7 @@ const MainScreen = ({ navigation }) => {
         await sendLocationToServer(location);
       }
       
-      // 백그라운드에서 위치 변경 감지 시작 (watchLocation)
-      startBackgroundLocationWatch();
-      
-      // 백그라운드에서 주기적으로 서버 신호 확인 (setInterval)
+      // 백그라운드에서 주기적으로 서버 신호 확인 (setInterval, 5초 간격)
       startBackgroundMatching();
     }
 
@@ -407,8 +382,8 @@ const MainScreen = ({ navigation }) => {
   };
 
   /**
-   * 활성 매칭 수 조회 (50m 이내)
-   * 실제로 매칭이 완료된 사용자 중 50m 이내에 있는 인원 수
+   * 활성 매칭 수 조회 (10m 이내)
+   * 실제로 매칭이 완료된 사용자 중 10m 이내에 있는 인원 수
    */
   const fetchActiveMatches = async (searchLocation) => {
     if (!matchingConsent || !searchLocation) {
@@ -417,16 +392,16 @@ const MainScreen = ({ navigation }) => {
     }
 
     try {
-      // 활성 매칭 수 조회 (50m 이내)
+      // 활성 매칭 수 조회 (10m 이내)
       const result = await apiClient.getActiveMatchCount(
         searchLocation.latitude,
         searchLocation.longitude,
-        0.05 // 50m 반경
+        0.01 // 10m 반경
       );
 
       if (result.success) {
         setMatchableCount(result.count || 0);
-        console.log(`📊 활성 매칭 수: ${result.count}명 (50m 이내)`);
+        console.log(`📊 활성 매칭 수: ${result.count}명 (10m 이내)`);
       } else {
         setMatchableCount(0);
         console.log('⚠️ 활성 매칭 수 조회 실패, 0으로 설정');
@@ -477,45 +452,12 @@ const MainScreen = ({ navigation }) => {
   };
 
   /**
-   * 백그라운드에서 위치 변경 감지 시작 (watchLocation)
-   * 위치가 변경될 때마다 디바운싱된 매칭 체크 수행
+   * 백그라운드 위치 감지 (제거됨 - setInterval로 통일)
+   * 이제 startBackgroundMatching에서 setInterval로 처리
    */
   const startBackgroundLocationWatch = () => {
-    // 매칭 동의가 OFF면 백그라운드 위치 감지 중지
-    if (!matchingConsent) {
-      console.log('⚠️ 매칭 동의 OFF - 백그라운드 위치 감지 중지');
-      return;
-    }
-
-    // 이미 백그라운드 watchLocation이 시작되어 있으면 중지
-    if (backgroundWatchIdRef.current !== null) {
-      locationService.stopWatching(backgroundWatchIdRef.current);
-      backgroundWatchIdRef.current = null;
-    }
-
-    const USE_MOCK_LOCATION = require('../../constants/config').USE_MOCK_LOCATION;
-    if (USE_MOCK_LOCATION) {
-      console.log('🧪 Mock Location 모드: 백그라운드 watchLocation 비활성화');
-      return;
-    }
-
-    console.log('🎯 백그라운드 위치 감지 시작 (위치 변경 시 디바운싱된 매칭 체크)');
-
-    const watchId = locationService.watchLocation(async (newLocation) => {
-      console.log('📍 백그라운드: 위치 업데이트됨:', newLocation);
-      
-      // 위치 서버에 전송
-      await sendLocationToServer(newLocation);
-      
-      // 디바운싱된 매칭 체크 (최소 30초 간격 보장)
-      await searchMatchesDebounced(newLocation);
-      
-      // 활성 매칭 수도 조회
-      await fetchActiveMatches(newLocation);
-    });
-
-    backgroundWatchIdRef.current = watchId;
-    console.log('✅ 백그라운드 위치 감지 시작됨 (watchId:', watchId, ')');
+    // watchLocation 제거: setInterval로 통일
+    console.log('✅ 백그라운드 위치 감지는 setInterval로 처리됨 (5초 간격)');
   };
 
   const startBackgroundMatching = () => {
@@ -536,15 +478,16 @@ const MainScreen = ({ navigation }) => {
     
     backgroundIntervalRef.current = setInterval(async () => {
       try {
-        console.log('⏰ 백그라운드 매칭 체크 (서버 신호 확인)...');
+        console.log('⏰ 백그라운드 매칭 체크 (서버 신호 확인, 5초 간격)...');
         
         // 현재 위치 가져오기
         const currentLocation = await locationService.getCurrentLocation();
+        setLocation(currentLocation);
         
         // 위치 서버에 전송
         await sendLocationToServer(currentLocation);
         
-        // 디바운싱된 매칭 체크 (최소 30초 간격 보장)
+        // 디바운싱된 매칭 체크 (최소 5초 간격 보장)
         await searchMatchesDebounced(currentLocation);
         
         // 활성 매칭 수도 조회
@@ -598,16 +541,7 @@ const MainScreen = ({ navigation }) => {
             clearInterval(backgroundIntervalRef.current);
             backgroundIntervalRef.current = null;
           }
-          // 위치 감지 중단
-          if (watchId !== null) {
-            locationService.stopWatching(watchId);
-            setWatchId(null);
-          }
-          // 백그라운드 위치 감지 중단
-          if (backgroundWatchIdRef.current !== null) {
-            locationService.stopWatching(backgroundWatchIdRef.current);
-            backgroundWatchIdRef.current = null;
-          }
+          // watchLocation 제거됨 - setInterval만 사용하므로 정리 불필요
           // 매칭 가능 인원 수 초기화
           setMatchableCount(0);
         }
@@ -633,9 +567,7 @@ const MainScreen = ({ navigation }) => {
         text: '로그아웃',
         style: 'destructive',
         onPress: async () => {
-          if (watchId !== null) {
-            locationService.stopWatching(watchId);
-          }
+          // watchLocation 제거됨 - setInterval만 사용하므로 정리 불필요
           await logout();
         },
       },

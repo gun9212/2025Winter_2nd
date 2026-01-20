@@ -1069,10 +1069,98 @@ def update_consent(request):
         user_profile.matching_consent = matching_consent
         user_profile.consent_updated_at = timezone.now()
         user_profile.save(update_fields=['matching_consent', 'consent_updated_at'])
-        
+
+        # ------------------------------------------------------------------
+        # 매칭 동의 OFF: 관련 매칭 모두 삭제
+        # ------------------------------------------------------------------
+        if not matching_consent:
+            from django.db.models import Q
+            from apps.matching.models import Match
+
+            deleted_qs = Match.objects.filter(
+                Q(user1=user_profile) | Q(user2=user_profile)
+            )
+            deleted_count = deleted_qs.count()
+            deleted_qs.delete()
+            print(f'🗑️ 매칭 동의 OFF: {deleted_count}개의 매칭 삭제됨 ({user_profile.user.username})')
+
+        # ------------------------------------------------------------------
+        # 매칭 동의 ON: 즉시 재매칭 시도 (현재 위치 기준 10m 반경)
+        # ------------------------------------------------------------------
+        else:
+            try:
+                # 위치 확인
+                user_location = user_profile.location
+                from apps.matching.utils import find_matchable_users
+                from apps.matching.models import Match
+                from django.db.models import Q
+                from django.db import transaction
+                from decimal import Decimal
+
+                latitude = float(user_location.latitude)
+                longitude = float(user_location.longitude)
+
+                # 반경 0.01km = 10m
+                matchable_users = find_matchable_users(
+                    user_profile,
+                    latitude,
+                    longitude,
+                    radius_km=0.01
+                )
+
+                # 기존 매칭 사용자 ID 수집 (중복 방지)
+                existing_matches = Match.objects.filter(
+                    Q(user1=user_profile) | Q(user2=user_profile)
+                ).select_related('user1', 'user2')
+                existing_user_ids = {
+                    (m.user2.id if m.user1 == user_profile else m.user1.id)
+                    for m in existing_matches
+                }
+
+                new_matches_count = 0
+
+                for matchable in matchable_users:
+                    candidate_user = matchable['user']
+
+                    # 이미 매칭된 사용자면 스킵
+                    if candidate_user.id in existing_user_ids:
+                        continue
+
+                    # 위치 정보 없는 후보는 스킵
+                    if not hasattr(candidate_user, 'location') or not candidate_user.location:
+                        continue
+
+                    try:
+                        with transaction.atomic():
+                            user1_lat = Decimal(str(latitude)).quantize(Decimal('0.000001'))
+                            user1_lon = Decimal(str(longitude)).quantize(Decimal('0.000001'))
+                            user2_lat = Decimal(str(candidate_user.location.latitude)).quantize(Decimal('0.000001'))
+                            user2_lon = Decimal(str(candidate_user.location.longitude)).quantize(Decimal('0.000001'))
+
+                            Match.objects.create(
+                                user1=user_profile,
+                                user2=candidate_user,
+                                user1_latitude=user1_lat,
+                                user1_longitude=user1_lon,
+                                user2_latitude=user2_lat,
+                                user2_longitude=user2_lon,
+                                matched_criteria={
+                                    'distance_m': matchable['distance_m'],
+                                    'match_score': matchable['match_score'],
+                                }
+                            )
+                            new_matches_count += 1
+                    except Exception as e:
+                        print(f'⚠️ 매칭 재생성 실패: {str(e)}')
+                        continue
+
+                print(f'✅ 매칭 동의 ON: {new_matches_count}개의 매칭 재생성 ({user_profile.user.username})')
+            except UserLocation.DoesNotExist:
+                print(f'⚠️ 매칭 동의 ON - 위치 정보 없음, 재매칭 건너뜀 ({user_profile.user.username})')
+
         # 응답 메시지
         consent_status = '활성화' if matching_consent else '비활성화'
-        
+
         return Response({
             'success': True,
             'message': f'매칭 동의가 {consent_status}되었습니다.',

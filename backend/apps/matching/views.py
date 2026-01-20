@@ -222,6 +222,51 @@ def match_check(request):
         other_user = match.user2 if match.user1 == current_user else match.user1
         print(f'   ⚠️ {other_user.user.username}: 이미 매칭됨 (매칭 ID: {match.id})')
     
+    # 거리 바깥으로 나간 매칭 삭제
+    deleted_matches = []
+    for match in existing_matches:
+        other_user = match.user2 if match.user1 == current_user else match.user1
+        
+        # 상대방의 현재 위치 확인
+        try:
+            other_location = other_user.location
+            other_lat = float(other_location.latitude)
+            other_lon = float(other_location.longitude)
+            
+            # 현재 위치와 상대방 위치 간 거리 계산 (km)
+            distance_km = calculate_distance_km(
+                float(latitude), float(longitude),
+                other_lat, other_lon
+            )
+            
+            # 반경 밖이면 매칭 삭제
+            if distance_km > radius:
+                match.delete()
+                deleted_matches.append({
+                    'match_id': match.id,
+                    'other_user': other_user.user.username,
+                    'distance_km': distance_km,
+                    'radius_km': radius
+                })
+                print(f'   🗑️ 매칭 삭제: {other_user.user.username} (거리: {distance_km*1000:.2f}m > 반경: {radius*1000:.2f}m)')
+        except UserLocation.DoesNotExist:
+            # 상대방 위치 정보가 없으면 매칭 삭제
+            match.delete()
+            deleted_matches.append({
+                'match_id': match.id,
+                'other_user': other_user.user.username,
+                'reason': '상대방 위치 정보 없음'
+            })
+            print(f'   🗑️ 매칭 삭제: {other_user.user.username} (위치 정보 없음)')
+    
+    if deleted_matches:
+        print(f'📊 총 {len(deleted_matches)}개의 매칭이 삭제되었습니다.')
+    
+    # 삭제 후 기존 매칭 목록 다시 조회 (삭제된 것 제외)
+    existing_matches = Match.objects.filter(
+        Q(user1=current_user) | Q(user2=current_user)
+    ).select_related('user1', 'user2').order_by('-matched_at')
+    
     # 새 매칭 생성
     new_matches = []
     for matchable in matchable_users:

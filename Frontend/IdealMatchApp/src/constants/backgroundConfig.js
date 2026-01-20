@@ -35,10 +35,10 @@ export const BACKGROUND_INTERVALS = {
 };
 
 // 기본 백그라운드 간격
-export const DEFAULT_BACKGROUND_INTERVAL = BACKGROUND_INTERVALS.FAST; // 30초
+export const DEFAULT_BACKGROUND_INTERVAL = 5000; // 5초
 
 // 포어그라운드 간격
-export const FOREGROUND_INTERVAL = 30000; // 30초
+export const FOREGROUND_INTERVAL = 5000; // 5초
 
 // 배터리 절약 임계값
 export const BATTERY_THRESHOLDS = {
