@@ -1148,6 +1148,39 @@ class ApiClient {
   }
 
   /**
+   * 백그라운드 푸시 알림 토큰 등록
+   * API: POST /api/matching/notifications/register/
+   * @param {string} fcmToken
+   * @param {'android'|'ios'} deviceType
+   */
+  async registerNotificationToken(fcmToken, deviceType = Platform.OS) {
+    try {
+      const requestBody = {
+        fcm_token: fcmToken,
+        device_type: deviceType,
+      };
+
+      // 디버그 모드에서 인증 토큰이 없으면 user_id 추가
+      const token = await StorageService.getAccessToken();
+      const testUserId = CONFIG && CONFIG.TEST_USER_ID;
+      if (__DEV__ && !token && testUserId) {
+        requestBody.user_id = testUserId;
+        console.log('🔧 디버그 모드: user_id 추가', requestBody.user_id);
+      }
+
+      const response = await this.request('/matching/notifications/register/', {
+        method: 'POST',
+        body: JSON.stringify(requestBody),
+      });
+
+      return { success: true, data: response };
+    } catch (error) {
+      console.error('❌ 푸시 토큰 등록 실패:', error);
+      return { success: false, error: error.message || String(error) };
+    }
+  }
+
+  /**
    * 매칭 체크 (포그라운드)
    * API 13: GET /api/matching/check/
    * @param {number} latitude - 현재 위치 위도
@@ -1210,6 +1243,7 @@ class ApiClient {
             user2: match.user2, // user2 정보 추가
             user1_id: match.user1?.id || match.user1_id,
             user2_id: match.user2?.id || match.user2_id,
+            matched_at: match.matched_at, // 매칭 생성 시간 추가
             user: {
               id: match.user2?.id || match.user2_id,
               username: match.user2?.username || 'Unknown',

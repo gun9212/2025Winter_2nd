@@ -6,15 +6,16 @@ import {
   Alert,
   ActivityIndicator,
   AppState,
+  Platform,
   TouchableOpacity,
   Image,
 } from 'react-native';
 import { AuthContext } from '../../context';
 import { locationService } from '../../services/location';
-import { mockApiClient } from '../../services/api';
 import { apiClient } from '../../services/api/apiClient';
 import { hapticService } from '../../services/haptic';
 import { notificationService } from '../../services/notification';
+import { startAndroidForegroundMatching, stopAndroidForegroundMatching } from '../../services/background';
 import { HeartbeatAnimation, GlowingHeart } from '../../components/animations';
 import { COLORS } from '../../constants';
 import { DEFAULT_BACKGROUND_INTERVAL, FOREGROUND_INTERVAL } from '../../constants/backgroundConfig';
@@ -43,8 +44,14 @@ const MainScreen = ({ navigation }) => {
   const notifiedMatchesRef = useRef(new Set());
   // 디바운싱을 위한 마지막 매칭 체크 시간 추적
   const lastMatchCheckTimeRef = useRef(0);
+  // 매칭 동의 활성화 시점 추적 (알림 초기화용)
+  const consentEnabledAtRef = useRef(null);
+  // 매칭 동의 활성화 후 알림을 보냈는지 추적 (한 번만 알림 보내기 위해)
+  const consentNotificationSentRef = useRef(false);
   // 백그라운드 watchLocation ID
   const backgroundWatchIdRef = useRef(null);
+  // 이전 매칭 가능 인원 수 추적 (count 증가 알림용)
+  const previousMatchableCountRef = useRef(0);
 
   useEffect(() => {
     // 로그인하지 않은 경우 위치 업데이트 하지 않음
@@ -168,10 +175,6 @@ const MainScreen = ({ navigation }) => {
       setLocation(currentLocation);
       console.log('✅ 현재 위치 획득:', currentLocation);
 
-      console.log('🎭 Mock API 초기화 중...');
-      mockApiClient.initialize(currentLocation);
-      mockApiClient.setUserProfile(userProfile, idealType);
-
       // 초기 위치를 서버에 전송
       await sendLocationToServer(currentLocation);
       await searchMatchesDebounced(currentLocation, true); // 초기 실행은 강제 체크
@@ -264,6 +267,7 @@ const MainScreen = ({ navigation }) => {
     if (!matchingConsent) {
       console.log('⚠️ 매칭 동의 OFF - 매칭 검색 중단');
       setMatchableCount(0);
+      previousMatchableCountRef.current = 0;
       return;
     }
     
@@ -283,36 +287,96 @@ const MainScreen = ({ navigation }) => {
       // 매칭 체크 후 활성 매칭 수도 함께 조회
       await fetchActiveMatches(searchLocation);
 
-      // 디버깅: 매칭 결과 확인
-      console.log('🔍 매칭 결과 확인:', {
+      // 디버깅: 매칭 결과 확인 (상세)
+      console.log('🔍 매칭 결과 확인 (상세):', {
         matched: result.matched,
         matchesCount: result.matches?.length || 0,
         isNewMatch: result.isNewMatch,
+        hasMatches: !!(result.matches && result.matches.length > 0),
         matches: result.matches,
+        fullResult: result,
       });
 
       // 매칭 발생 시 로컬 알림 표시 (새 매칭만, 중복 방지)
-      if (result.matched && result.isNewMatch && result.matches && result.matches.length > 0) {
+      // 매칭 동의를 ON으로 바꾼 직후(30초 이내)에 생성된 매칭도 새 매칭으로 간주
+      const timeSinceConsentEnabled = consentEnabledAtRef.current ? 
+        (new Date() - consentEnabledAtRef.current) : null;
+      const isWithinConsentWindow = timeSinceConsentEnabled !== null && 
+        timeSinceConsentEnabled < 30000; // 30초 이내
+      
+      // 매칭이 동의 활성화 이후에 생성되었는지 확인
+      let isMatchAfterConsent = false;
+      if (isWithinConsentWindow && result.matches && result.matches.length > 0 && result.matches[0].matched_at) {
+        try {
+          const matchCreatedAt = new Date(result.matches[0].matched_at);
+          isMatchAfterConsent = matchCreatedAt >= consentEnabledAtRef.current;
+        } catch (e) {
+          console.warn('⚠️ matched_at 파싱 실패:', e);
+        }
+      }
+      
+      // 알림 표시 조건:
+      // 1. 실제로 새로 생성된 매칭 (result.isNewMatch === true)
+      // 2. 또는 매칭 동의 활성화 직후(30초 이내)에 매칭이 있고, 아직 알림을 보내지 않은 경우
+      //    (matched_at이 없어도 동의 활성화 직후면 알림 표시)
+      const shouldShowNotification = result.matched && 
+        result.matches && result.matches.length > 0 &&
+        (result.isNewMatch || (isWithinConsentWindow && !consentNotificationSentRef.current));
+      
+      console.log('🔍 알림 조건 체크:', {
+        'result.matched': result.matched,
+        'result.isNewMatch': result.isNewMatch,
+        'result.matches 존재': !!(result.matches),
+        'result.matches.length > 0': !!(result.matches && result.matches.length > 0),
+        'isWithinConsentWindow': isWithinConsentWindow,
+        'isMatchAfterConsent': isMatchAfterConsent,
+        'consentNotificationSent': consentNotificationSentRef.current,
+        'timeSinceConsentEnabled (ms)': timeSinceConsentEnabled,
+        'shouldShowNotification': shouldShowNotification,
+        'consentEnabledAt': consentEnabledAtRef.current,
+        'matchCreatedAt': result.matches?.[0]?.matched_at,
+      });
+
+      if (shouldShowNotification) {
         console.log('✅ 새 매칭 발견 - 알림 처리 시작');
         const bestMatch = result.matches[0];
         // 매칭 ID 생성 (user1_id와 user2_id 조합 또는 match.id)
+        // 매칭이 삭제되었다가 재생성되면 ID가 달라질 수 있으므로, 사용자 조합으로도 확인
         const matchId = bestMatch.id || `${bestMatch.user1_id || bestMatch.user1?.id || 'unknown'}_${bestMatch.user2_id || bestMatch.user2?.id || 'unknown'}`;
+        const user1Id = bestMatch.user1_id || bestMatch.user1?.id || 0;
+        const user2Id = bestMatch.user2_id || bestMatch.user2?.id || 0;
+        const userPairId = `${Math.min(user1Id, user2Id)}_${Math.max(user1Id, user2Id)}`;
         
-        // 이미 알림을 보낸 매칭인지 확인
-        if (notifiedMatchesRef.current.has(matchId)) {
-          console.log('ℹ️ 이미 알림을 보낸 매칭:', matchId);
+        // 이미 알림을 보낸 매칭인지 확인 (매칭 ID 또는 사용자 조합으로 확인)
+        if (notifiedMatchesRef.current.has(matchId) || notifiedMatchesRef.current.has(userPairId)) {
+          console.log('ℹ️ 이미 알림을 보낸 매칭:', matchId, '또는', userPairId);
+          // 중복 알림 방지: 매칭 동의 활성화 윈도우도 초기화 (더 이상 알림 안 오도록)
+          if (isWithinConsentWindow || isMatchAfterConsent) {
+            consentEnabledAtRef.current = null;
+            console.log('🔄 매칭 동의 활성화 윈도우 초기화 (이미 알림 보낸 매칭)');
+          }
           return; // 중복 알림 방지
         }
         
         console.log('🎉 새 매칭 발견! 로컬 알림 표시:', matchId);
         console.log('📊 매칭 정보:', {
           id: bestMatch.id,
-          user1_id: bestMatch.user1_id || bestMatch.user1?.id,
-          user2_id: bestMatch.user2_id || bestMatch.user2?.id,
+          user1_id: user1Id,
+          user2_id: user2Id,
+          userPairId: userPairId,
         });
         
-        // 알림 보낸 매칭 기록
+        // 알림 보낸 매칭 기록 (매칭 ID와 사용자 조합 모두 기록)
         notifiedMatchesRef.current.add(matchId);
+        notifiedMatchesRef.current.add(userPairId);
+        
+        // 매칭 동의 활성화 윈도우 즉시 초기화 (한 번 알림을 보냈으면 더 이상 윈도우 사용 안 함)
+        // 이렇게 하면 같은 매칭에 대해 여러 번 알림이 오지 않음
+        if (isWithinConsentWindow || isMatchAfterConsent) {
+          consentEnabledAtRef.current = null;
+          consentNotificationSentRef.current = true; // 알림을 보냈음을 기록
+          console.log('🔄 매칭 동의 활성화 윈도우 초기화 (알림 표시 완료)');
+        }
         
         // 로컬 알림 표시 (무료, iOS/Android 모두 동작)
         try {
@@ -331,13 +395,30 @@ const MainScreen = ({ navigation }) => {
             setShowHeartbeat(false);
           }, 5000);
         }
-      } else if (result.matched && !result.isNewMatch) {
+      } else if (result.matched && !shouldShowNotification) {
         console.log('ℹ️ 기존 매칭 (알림 표시 안 함)');
+        console.log('🔍 기존 매칭 상세:', {
+          matched: result.matched,
+          isNewMatch: result.isNewMatch,
+          matchesCount: result.matches?.length || 0,
+        });
       } else {
         console.log('⚠️ 매칭 조건 불충족:', {
           matched: result.matched,
           hasMatches: result.matches && result.matches.length > 0,
+          isNewMatch: result.isNewMatch,
         });
+        
+        // 디버깅: 매칭이 있는데 isNewMatch가 false인 경우 상세 로그
+        if (result.matched && result.matches && result.matches.length > 0 && !result.isNewMatch) {
+          console.log('🔍 기존 매칭 상세 정보:', {
+            matchId: result.matches[0]?.id,
+            user1_id: result.matches[0]?.user1_id,
+            user2_id: result.matches[0]?.user2_id,
+            isNewMatch: result.isNewMatch,
+            '이미 알림 보냄?': notifiedMatchesRef.current.has(result.matches[0]?.id || ''),
+          });
+        }
       }
     } catch (error) {
       console.error('❌ 매칭 검색 오류:', error);
@@ -351,6 +432,11 @@ const MainScreen = ({ navigation }) => {
 
     if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
       console.log('✅ 포어그라운드 전환 - 실시간 매칭 재개');
+
+      // Android: 백그라운드 Foreground Service 중단 (포어그라운드에서는 JS 로직 사용)
+      if (Platform.OS === 'android') {
+        stopAndroidForegroundMatching();
+      }
       
       if (backgroundIntervalRef.current) {
         clearInterval(backgroundIntervalRef.current);
@@ -378,11 +464,19 @@ const MainScreen = ({ navigation }) => {
       if (location) {
         await sendLocationToServer(location);
       }
-      
-      // 백그라운드에서 주기적으로 서버 신호 확인 (setInterval, 5초 간격)
-      startBackgroundMatching();
-      // 위치 변화 감지 시작 (백그라운드에서 깨워줄 수 있도록)
-      startBackgroundLocationWatch();
+
+      if (Platform.OS === 'android') {
+        // Android는 JS 타이머 대신 Foreground Service로 백그라운드 동작 보장
+        await startAndroidForegroundMatching({
+          // 배터리 고려 기본 1분 (필요시 조정)
+          intervalMs: 60000,
+          radiusKm: 0.05,
+        });
+      } else {
+        // iOS: 기존 로직 유지
+        startBackgroundMatching();
+        startBackgroundLocationWatch();
+      }
     }
 
     appState.current = nextAppState;
@@ -395,6 +489,7 @@ const MainScreen = ({ navigation }) => {
   const fetchActiveMatches = async (searchLocation) => {
     if (!matchingConsent || !searchLocation) {
       setMatchableCount(0);
+      previousMatchableCountRef.current = 0;
       return;
     }
 
@@ -407,15 +502,37 @@ const MainScreen = ({ navigation }) => {
       );
 
       if (result.success) {
-        setMatchableCount(result.count || 0);
-        console.log(`📊 활성 매칭 수: ${result.count}명 (10m 이내)`);
+        const newCount = result.count || 0;
+        const previousCount = previousMatchableCountRef.current;
+        
+        // count가 증가했는지 확인 (이전 count가 0보다 크고, 새 count가 이전보다 큰 경우)
+        if (newCount > previousCount && previousCount > 0) {
+          console.log(`📈 매칭 가능 인원 증가: ${previousCount}명 → ${newCount}명`);
+          
+          // 알림 표시
+          try {
+            await notificationService.showCountIncreaseNotification(
+              previousCount,
+              newCount
+            );
+            console.log('✅ 매칭 count 증가 알림 표시 완료');
+          } catch (error) {
+            console.error('❌ 알림 표시 실패:', error);
+          }
+        }
+        
+        setMatchableCount(newCount);
+        previousMatchableCountRef.current = newCount;
+        console.log(`📊 활성 매칭 수: ${newCount}명 (10m 이내)`);
       } else {
         setMatchableCount(0);
+        previousMatchableCountRef.current = 0;
         console.log('⚠️ 활성 매칭 수 조회 실패, 0으로 설정');
       }
     } catch (error) {
       console.error('❌ 활성 매칭 수 조회 오류:', error);
       setMatchableCount(0);
+      previousMatchableCountRef.current = 0;
     }
   };
 
@@ -551,12 +668,24 @@ const MainScreen = ({ navigation }) => {
         if (newConsentState) {
           // 매칭 동의 ON: 매칭 시작
           console.log('🚀 매칭 동의 ON - 매칭 시작');
+          // 알림 기록 초기화 (비활성화 후 활성화 시 알림이 오도록)
+          notifiedMatchesRef.current.clear();
+          // 매칭 동의 활성화 시점 기록
+          consentEnabledAtRef.current = new Date();
+          // 매칭 동의 활성화 후 알림 전송 플래그 초기화
+          consentNotificationSentRef.current = false;
+          console.log('🔄 알림 기록 초기화 (매칭 동의 활성화)', consentEnabledAtRef.current);
           if (location) {
             initializeLocation();
           }
         } else {
           // 매칭 동의 OFF: 매칭 중지 및 위치 추적 중단
           console.log('⏸️ 매칭 동의 OFF - 매칭 중지 및 위치 추적 중단');
+
+          // Android: Foreground Service도 중단
+          if (Platform.OS === 'android') {
+            stopAndroidForegroundMatching();
+          }
           // 기존 interval 정리
           if (matchingIntervalRef.current) {
             clearInterval(matchingIntervalRef.current);
@@ -574,6 +703,7 @@ const MainScreen = ({ navigation }) => {
           }
           // 매칭 가능 인원 수 초기화
           setMatchableCount(0);
+          previousMatchableCountRef.current = 0;
         }
         
         // 햅틱 피드백
@@ -623,7 +753,7 @@ const MainScreen = ({ navigation }) => {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Image source={LoginLogo} style={styles.headerLogo} resizeMode="contain" />
-          <Text style={styles.headerTitle}>이상형 매칭</Text>
+          <Text style={styles.headerTitle}>Wwoong</Text>
         </View>
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutButtonText}>Logout</Text>
@@ -821,14 +951,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.4)',
     borderRadius: 40,
     borderWidth: 1,
-    borderColor: 'rgba(255, 182, 193, 0.3)',
+    // Android에서는 낮은 alpha의 보더 + elevation 그림자가 "회색 테두리"처럼 보일 수 있어 약간 더 핑크 톤으로 조정
+    borderColor: 'rgba(255, 105, 180, 0.35)',
     padding: 32,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.05,
-    shadowRadius: 25,
-    elevation: 3,
+    ...(Platform.OS === 'ios'
+      ? {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 10 },
+          shadowOpacity: 0.05,
+          shadowRadius: 25,
+        }
+      : {
+          // Android shadow(elevation)가 회색 링/테두리처럼 보이는 경우가 있어 기본은 끔
+          elevation: 0,
+        }),
   },
   heartCardOverlay: {
     position: 'absolute',
@@ -873,13 +1010,20 @@ const styles = StyleSheet.create({
     height: 52,
     backgroundColor: COLORS.buttonBg,
     borderWidth: 1.5,
-    borderColor: COLORS.buttonBorder,
+    // Android에서는 낮은 alpha 보더 + 그림자가 회색 테두리처럼 보여 톤을 조금 더 핑크로
+    borderColor: 'rgba(255, 105, 180, 0.40)',
     borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 2,
+    ...(Platform.OS === 'ios'
+      ? {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.08,
+          shadowRadius: 12,
+        }
+      : {
+          // Android: elevation 그림자가 회색 링처럼 보일 수 있어 비활성화
+          elevation: 0,
+        }),
   },
   actionButtonIcon: {
     fontSize: 20,

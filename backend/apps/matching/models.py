@@ -53,7 +53,12 @@ class Match(models.Model):
 
 
 class Notification(models.Model):
-    """알림 모델"""
+    """알림(푸시 토큰 등록/상태) 모델
+
+    초기 버전에서는 Match별 알림 추적을 위해 설계되었으나,
+    이후 백그라운드 푸시 알림(FCM) 토큰 등록을 위해 `match`를 nullable로 확장하고
+    `fcm_token`, `device_type`, timestamp 필드를 추가했습니다.
+    """
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -64,7 +69,19 @@ class Notification(models.Model):
         Match,
         on_delete=models.CASCADE,
         related_name='notifications',
-        verbose_name='매칭'
+        verbose_name='매칭',
+        null=True,
+        blank=True,
+    )
+    
+    # 푸시 알림 토큰 등록용
+    fcm_token = models.CharField(max_length=255, null=True, blank=True, verbose_name='FCM 토큰')
+    device_type = models.CharField(
+        max_length=10,
+        choices=[('ios', 'iOS'), ('android', 'Android')],
+        null=True,
+        blank=True,
+        verbose_name='디바이스 타입'
     )
     
     # boundary 추적
@@ -72,15 +89,20 @@ class Notification(models.Model):
     boundary_exited_at = models.DateTimeField(null=True, blank=True, verbose_name='boundary 이탈 시간')
     is_active = models.BooleanField(default=False, verbose_name='알림 활성화 여부')
     
+    created_at = models.DateTimeField(auto_now_add=True, null=True, verbose_name='생성 시간')
+    updated_at = models.DateTimeField(auto_now=True, null=True, verbose_name='업데이트 시간')
+    
     class Meta:
         db_table = 'notifications'
         verbose_name = '알림'
         verbose_name_plural = '알림들'
-        unique_together = [['user', 'match']]
         indexes = [
             models.Index(fields=['user', 'is_active']),
             models.Index(fields=['user', 'match']),
+            models.Index(fields=['user', 'fcm_token']),
         ]
     
     def __str__(self):
+        if self.fcm_token:
+            return f"{self.user.user.username}의 푸시 토큰({self.device_type})"
         return f"{self.user.user.username}의 알림 - {self.match}"

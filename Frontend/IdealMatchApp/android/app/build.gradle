@@ -74,6 +74,11 @@ android {
     compileSdkVersion rootProject.ext.compileSdkVersion
 
     namespace "com.idealmatchapp"
+
+    // AGP 8+: BuildConfig generation is opt-in when custom fields are present.
+    buildFeatures {
+        buildConfig true
+    }
     defaultConfig {
         applicationId "com.idealmatchapp"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -121,6 +126,10 @@ dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
 
+    // Foreground service (Android) - location + networking
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     debugImplementation("com.facebook.flipper:flipper:${FLIPPER_VERSION}")
     debugImplementation("com.facebook.flipper:flipper-network-plugin:${FLIPPER_VERSION}") {
         exclude group:'com.squareup.okhttp3', module:'okhttp'
@@ -135,3 +144,6 @@ dependencies {
 }
 
 apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
+
+// react-native-vector-icons: bundle icon fonts into Android assets
+apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"

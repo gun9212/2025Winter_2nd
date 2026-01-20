@@ -1,4 +1,28 @@
+// React Native 0.72.x settings.gradle (CLI native_modules.gradle based autolinking)
+pluginManagement {
+  repositories {
+    gradlePluginPortal()
+    google()
+    mavenCentral()
+  }
+  includeBuild('../node_modules/@react-native/gradle-plugin')
+}
+
+dependencyResolutionManagement {
+  repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+  repositories {
+    google()
+    mavenCentral()
+    maven { url("$rootDir/../node_modules/react-native/android") }
+    maven { url("$rootDir/../node_modules/jsc-android/dist") }
+    // Notifee ships a local Maven repo for app.notifee artifacts.
+    maven { url("$rootDir/../node_modules/@notifee/react-native/android/libs") }
+  }
+}
+
 rootProject.name = 'IdealMatchApp'
 apply from: file("../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesSettingsGradle(settings)
 include ':app'
+// Needed for buildscript classpath resolution:
+// classpath("com.facebook.react:react-native-gradle-plugin")
 includeBuild('../node_modules/@react-native/gradle-plugin')

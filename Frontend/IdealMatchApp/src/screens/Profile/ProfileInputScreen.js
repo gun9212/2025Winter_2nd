@@ -156,39 +156,39 @@ const ProfileInputScreen = ({ navigation, route }) => {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
+    <ScrollView 
+      style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* 나이 */}
+      keyboardShouldPersistTaps="handled"
+    >
+      {/* 나이 */}
         <View style={styles.section}>
           <Text style={styles.label}>나이</Text>
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
-              value={age}
-              onChangeText={setAge}
+        value={age}
+        onChangeText={setAge}
               placeholder="나이를 입력하세요"
               placeholderTextColor="#94A3B8"
-              keyboardType="number-pad"
-              maxLength={3}
-            />
+        keyboardType="number-pad"
+        maxLength={3}
+      />
             <Text style={styles.inputSuffix}>세</Text>
           </View>
         </View>
 
-        {/* 성별 */}
-        <View style={styles.section}>
-          <Text style={styles.label}>성별</Text>
+      {/* 성별 */}
+      <View style={styles.section}>
+        <Text style={styles.label}>성별</Text>
           <View style={styles.genderContainer}>
             <TouchableOpacity
               style={[
                 styles.genderButton,
                 gender === 'male' && styles.genderButtonActive,
               ]}
-              onPress={() => setGender('male')}
+            onPress={() => setGender('male')}
               activeOpacity={0.8}
             >
               <Text
@@ -205,7 +205,7 @@ const ProfileInputScreen = ({ navigation, route }) => {
                 styles.genderButton,
                 gender === 'female' && styles.genderButtonActive,
               ]}
-              onPress={() => setGender('female')}
+            onPress={() => setGender('female')}
               activeOpacity={0.8}
             >
               <Text
@@ -217,10 +217,10 @@ const ProfileInputScreen = ({ navigation, route }) => {
                 여성
               </Text>
             </TouchableOpacity>
-          </View>
         </View>
+      </View>
 
-        {/* 키 */}
+      {/* 키 */}
         <View style={styles.section}>
           <Text style={styles.label}>키</Text>
           <View style={styles.inputContainer}>
@@ -237,7 +237,7 @@ const ProfileInputScreen = ({ navigation, route }) => {
           </View>
         </View>
 
-        {/* 성격 */}
+      {/* 성격 */}
         <View style={styles.section}>
           <Text style={styles.label}>성격</Text>
           <View style={styles.chipContainer}>
@@ -268,7 +268,7 @@ const ProfileInputScreen = ({ navigation, route }) => {
           </View>
         </View>
 
-        {/* MBTI */}
+      {/* MBTI */}
         <View style={[styles.section, styles.mbtiSection]}>
           <Text style={styles.label}>MBTI</Text>
           <View style={styles.mbtiGrid}>
@@ -301,7 +301,7 @@ const ProfileInputScreen = ({ navigation, route }) => {
           </View>
         </View>
 
-        {/* 관심사 */}
+      {/* 관심사 */}
         <View style={[styles.section, styles.interestsSection, styles.lastSection]}>
           <Text style={[styles.label, styles.interestsLabel]}>관심사</Text>
           <View style={styles.chipContainer}>
@@ -336,7 +336,7 @@ const ProfileInputScreen = ({ navigation, route }) => {
       <View style={styles.footer}>
         <TouchableOpacity
           style={[styles.submitButton, loading && styles.submitButtonDisabled]}
-          onPress={handleSubmit}
+        onPress={handleSubmit}
           disabled={loading}
           activeOpacity={0.9}
         >

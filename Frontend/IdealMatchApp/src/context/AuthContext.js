@@ -1,6 +1,5 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { StorageService } from '../services/storage';
-import { mockAuthServer } from '../services/mock';
 import { dataMigration } from '../services/migration';
 import { apiClient } from '../services/api/apiClient';
 
@@ -15,8 +14,6 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     loadAuthStatus();
-    // 테스트 계정 생성
-    mockAuthServer.createTestAccounts();
   }, []);
 
   // 프로필 자동 로드 (로그인 후 또는 사용자 정보가 있을 때)
@@ -313,14 +310,6 @@ export const AuthProvider = ({ children }) => {
       await StorageService.saveUserProfile(updatedProfile, currentUser.userId);
       setUserProfile(updatedProfile);
       
-      // 서버에 플래그 업데이트 (선택사항 - 기존 Mock API 호출)
-      try {
-        await mockAuthServer.updateUserFlags(currentUser.userId, true, undefined);
-      } catch (mockError) {
-        // Mock API 에러는 무시 (선택사항)
-        console.log('Mock API 호출 실패 (무시):', mockError);
-      }
-      
       console.log('✅ 프로필 업데이트 완료');
     } catch (error) {
       console.error('Update profile error:', error);
@@ -405,9 +394,6 @@ export const AuthProvider = ({ children }) => {
       await StorageService.saveIdealType(ideal, currentUser.userId);
       setUserProfile(profile);
       setIdealType(ideal);
-      
-      // 서버에 플래그 업데이트
-      await mockAuthServer.updateUserFlags(currentUser.userId, true, true);
       
       console.log('✅ 프로필 설정 완료');
     } catch (error) {

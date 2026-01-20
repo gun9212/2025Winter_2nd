@@ -12,7 +12,6 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
-import { MockAuthService } from '../../services/mock';
 import { apiClient } from '../../services/api/apiClient';
 import { COLORS } from '../../constants';
 
@@ -389,7 +388,7 @@ const SignupScreen = ({ navigation, onSignup }) => {
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <>
-                <Text style={styles.joinButtonText}>Join Wwong</Text>
+                <Text style={styles.joinButtonText}>Join Wwoong</Text>
                 <Text style={styles.celebrationIcon}>🎉</Text>
               </>
             )}

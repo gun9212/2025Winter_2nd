@@ -182,78 +182,78 @@ const IdealTypeInputScreen = ({ navigation }) => {
           <View style={styles.headerSpacer} />
         </View>
 
-        <ScrollView
-          style={styles.scrollView}
+    <ScrollView 
+      style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* 키 범위 */}
-          <View style={styles.section}>
+      keyboardShouldPersistTaps="handled"
+    >
+      {/* 키 범위 */}
+      <View style={styles.section}>
             <Text style={styles.label}>키 범위</Text>
-            <View style={styles.rangeContainer}>
+        <View style={styles.rangeContainer}>
               <View style={styles.rangeInputContainer}>
                 <TextInput
                   style={styles.rangeInput}
-                  value={heightMin}
-                  onChangeText={setHeightMin}
+              value={heightMin}
+              onChangeText={setHeightMin}
                   placeholder="최소 키"
                   placeholderTextColor="#94A3B8"
-                  keyboardType="number-pad"
-                  maxLength={3}
-                />
+              keyboardType="number-pad"
+              maxLength={3}
+            />
                 <Text style={styles.rangeInputSuffix}>cm</Text>
-              </View>
-              <Text style={styles.rangeSeparator}>~</Text>
+          </View>
+          <Text style={styles.rangeSeparator}>~</Text>
               <View style={styles.rangeInputContainer}>
                 <TextInput
                   style={styles.rangeInput}
-                  value={heightMax}
-                  onChangeText={setHeightMax}
+              value={heightMax}
+              onChangeText={setHeightMax}
                   placeholder="최대 키"
                   placeholderTextColor="#94A3B8"
-                  keyboardType="number-pad"
-                  maxLength={3}
-                />
+              keyboardType="number-pad"
+              maxLength={3}
+            />
                 <Text style={styles.rangeInputSuffix}>cm</Text>
-              </View>
-            </View>
           </View>
+        </View>
+      </View>
 
-          {/* 나이 범위 */}
-          <View style={styles.section}>
+      {/* 나이 범위 */}
+      <View style={styles.section}>
             <Text style={styles.label}>나이 범위</Text>
-            <View style={styles.rangeContainer}>
+        <View style={styles.rangeContainer}>
               <View style={styles.rangeInputContainer}>
                 <TextInput
                   style={styles.rangeInput}
-                  value={ageMin}
-                  onChangeText={setAgeMin}
+              value={ageMin}
+              onChangeText={setAgeMin}
                   placeholder="최소 나이"
                   placeholderTextColor="#94A3B8"
-                  keyboardType="number-pad"
-                  maxLength={3}
-                />
+              keyboardType="number-pad"
+              maxLength={3}
+            />
                 <Text style={styles.rangeInputSuffix}>세</Text>
-              </View>
-              <Text style={styles.rangeSeparator}>~</Text>
+          </View>
+          <Text style={styles.rangeSeparator}>~</Text>
               <View style={styles.rangeInputContainer}>
                 <TextInput
                   style={styles.rangeInput}
-                  value={ageMax}
-                  onChangeText={setAgeMax}
+              value={ageMax}
+              onChangeText={setAgeMax}
                   placeholder="최대 나이"
                   placeholderTextColor="#94A3B8"
-                  keyboardType="number-pad"
-                  maxLength={3}
-                />
+              keyboardType="number-pad"
+              maxLength={3}
+            />
                 <Text style={styles.rangeInputSuffix}>세</Text>
-              </View>
-            </View>
           </View>
+        </View>
+      </View>
 
           {/* 선호 성별 */}
-          <View style={styles.section}>
+      <View style={styles.section}>
             <Text style={styles.label}>선호하는 성별</Text>
             <View style={styles.genderContainer}>
               <TouchableOpacity
@@ -308,10 +308,10 @@ const IdealTypeInputScreen = ({ navigation }) => {
                 </Text>
               </TouchableOpacity>
             </View>
-          </View>
+      </View>
 
-          {/* 선호 성격 */}
-          <View style={styles.section}>
+      {/* 선호 성격 */}
+      <View style={styles.section}>
             <Text style={styles.label}>선호하는 성격</Text>
             <View style={styles.chipContainer}>
               {PERSONALITY_TYPES.map((personality) => {
@@ -372,9 +372,9 @@ const IdealTypeInputScreen = ({ navigation }) => {
                 );
               })}
             </View>
-          </View>
+      </View>
 
-          {/* 선호 관심사 */}
+      {/* 선호 관심사 */}
           <View style={[styles.section, styles.interestsSection, styles.lastSection]}>
             <Text style={[styles.label, styles.interestsLabel]}>선호하는 관심사</Text>
             <View style={styles.chipContainer}>
@@ -402,14 +402,14 @@ const IdealTypeInputScreen = ({ navigation }) => {
                 );
               })}
             </View>
-          </View>
+      </View>
         </ScrollView>
 
         {/* 하단 고정 버튼 */}
         <View style={styles.footer}>
           <TouchableOpacity
             style={[styles.submitButton, loading && styles.submitButtonDisabled]}
-            onPress={handleSubmit}
+        onPress={handleSubmit}
             disabled={loading}
             activeOpacity={0.9}
           >

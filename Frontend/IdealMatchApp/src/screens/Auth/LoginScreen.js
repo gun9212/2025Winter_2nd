@@ -62,7 +62,7 @@ const LoginScreen = ({ navigation, onLogin }) => {
               resizeMode="contain"
             />
           </View>
-          <Text style={styles.title}>Wwong</Text>
+          <Text style={styles.title}>Wwoong</Text>
           <Text style={styles.subtitle}>Spark Something New</Text>
         </View>
 
@@ -134,7 +134,7 @@ const LoginScreen = ({ navigation, onLogin }) => {
         {/* Create Account */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            New to Wwong?{' '}
+            New to Wwoong?{' '}
             <Text
               style={styles.footerLink}
               onPress={() => navigation.navigate('Signup')}

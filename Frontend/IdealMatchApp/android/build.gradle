@@ -19,7 +19,48 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath("com.android.tools.build:gradle")
+        // Pin versions to avoid resolving an incompatible latest plugin.
+        // React Native 0.72.x works well with AGP 8.0.x + Gradle 8.0.x + JDK 17.
+        classpath("com.android.tools.build:gradle:8.0.2")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:${kotlinVersion}")
         classpath("com.facebook.react:react-native-gradle-plugin")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AGP 8+: Some React Native libraries still declare buildConfigField but do not
+// enable buildFeatures.buildConfig. Force-enable it to avoid configuration errors.
+// ---------------------------------------------------------------------------
+subprojects { subproject ->
+    afterEvaluate {
+        def androidExt = subproject.extensions.findByName("android")
+        if (androidExt != null && androidExt.hasProperty("buildFeatures")) {
+            try {
+                androidExt.buildFeatures.buildConfig = true
+            } catch (ignored) {
+                // 일부 플러그인은 buildFeatures를 다르게 노출할 수 있음
+            }
+        }
+
+        // AGP 8+: Libraries must declare `android.namespace`.
+        // Many React Native libraries still rely on AndroidManifest `package`.
+        if (androidExt != null && androidExt.hasProperty("namespace")) {
+            try {
+                def currentNs = androidExt.namespace
+                if (currentNs == null || currentNs.toString().trim().isEmpty()) {
+                    def manifest = subproject.file("src/main/AndroidManifest.xml")
+                    def nsFromManifest = null
+                    if (manifest.exists()) {
+                        def m = (manifest.getText("UTF-8") =~ /package=\"([^\"]+)\"/)
+                        if (m.find()) {
+                            nsFromManifest = m.group(1)
+                        }
+                    }
+                    androidExt.namespace = nsFromManifest ?: "com.${subproject.name.replaceAll(/[^A-Za-z0-9_]/, '_')}"
+                }
+            } catch (ignored) {
+                // ignore - not all android extensions behave the same
+            }
+        }
     }
 }
