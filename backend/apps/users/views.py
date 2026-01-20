@@ -201,7 +201,9 @@ def login(request):
             {
                 'error': '이메일 인증이 완료되지 않았습니다.',
                 'email_verified': False,
-                'message': '이메일 인증을 완료한 후 서비스를 이용할 수 있습니다.'
+                'email': user.email,  # 이메일 주소 포함하여 프론트엔드에서 인증 화면으로 유도
+                'message': '이메일 인증을 완료한 후 서비스를 이용할 수 있습니다.',
+                'requires_email_verification': True  # 프론트엔드에서 이메일 인증 화면 표시 플래그
             },
             status=status.HTTP_403_FORBIDDEN
         )
@@ -269,11 +271,15 @@ def send_verification_code(request):
         )
     
     # 이미 등록된 이메일인지 확인
-    if AuthUser.objects.filter(email=email).exists():
+    # 단, 이메일 인증이 완료되지 않은 사용자는 인증번호 발송 허용 (로그인 시 이메일 인증 완료를 위한 재인증)
+    existing_user = AuthUser.objects.filter(email=email).first()
+    if existing_user and existing_user.email_verified:
+        # 이미 등록되고 이메일 인증이 완료된 이메일인 경우
         return Response(
             {'error': '이미 등록된 이메일입니다.'},
             status=status.HTTP_400_BAD_REQUEST
         )
+    # 이메일 인증이 미완료인 경우 또는 회원가입 전인 경우 인증번호 발송 허용
     
     # 인증번호 생성 (6자리 숫자)
     verification_code = ''.join(random.choices(string.digits, k=6))
