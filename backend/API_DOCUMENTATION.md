@@ -3,14 +3,14 @@
 ## 인증 관련 API
 
 ### 1. 회원가입
-- **URL**: `POST /api/auth/register/`
+- **URL**: `POST /api/users/auth/register/`
 - **설명**: 신규 사용자 회원가입
 - **Request Body**:
 ```json
 {
   "username": "string (필수, 최대 100자, UNIQUE)",
   "password": "string (필수, 최소 8자 권장)",
-  "phone_number": "string (필수, 최대 20자, UNIQUE)"
+  "email": "string (필수, 이메일 형식, UNIQUE)"
 }
 ```
 - **Response** (201 Created):
@@ -18,37 +18,44 @@
 {
   "id": 1,
   "username": "user123",
-  "phone_number": "010-1234-5678",
-  "phone_verified": false,
+  "email": "user@example.com",
+  "email_verified": false,
   "date_joined": "2025-01-15T10:00:00Z"
 }
 ```
+- **참고**: 회원가입 전에 이메일 인증이 완료된 경우 `email_verified = true`로 설정됨
 
-### 2. 전화번호 인증
-- **URL**: `POST /api/auth/verify-phone/`
-- **설명**: 전화번호 인증번호 검증
+### 2. 이메일 인증
+- **URL**: `POST /api/users/auth/verify-email/`
+- **설명**: 이메일 인증번호 검증
+- **인증번호 유효시간**: 2분 (120초)
 - **Request Body**:
 ```json
 {
-  "phone_number": "010-1234-5678",
+  "email": "user@example.com",
   "verification_code": "123456"
 }
 ```
 - **Response** (200 OK):
 ```json
 {
-  "phone_verified": true,
-  "phone_verified_at": "2025-01-15T10:05:00Z"
+  "email_verified": true,
+  "email_verified_at": "2025-01-15T10:05:00Z"
 }
 ```
+- **기능**:
+  - 회원가입 전인 경우: Redis에 인증 완료 플래그 저장 (회원가입 시 `email_verified = true`로 설정됨)
+  - 이미 회원가입한 사용자인 경우: `email_verified = true`로 즉시 업데이트
+  - **프로필이 있는 경우**: `service_active = true`로 자동 설정 (서비스 이용 가능)
 
 ### 3. 로그인
-- **URL**: `POST /api/auth/login/`
+- **URL**: `POST /api/users/auth/login/`
 - **설명**: 사용자 로그인 (JWT 토큰 발급)
+- **이메일 인증 필수**: 이메일 인증이 완료되지 않은 사용자는 로그인 불가 (403 Forbidden)
 - **Request Body**:
 ```json
 {
-  "username": "user123",
+  "username": "user123",  // 또는 "user@example.com" (이메일로도 로그인 가능)
   "password": "password123"
 }
 ```
@@ -60,13 +67,23 @@
   "user": {
     "id": 1,
     "username": "user123",
-    "phone_number": "010-1234-5678"
+    "email": "user@example.com",
+    "email_verified": true
   }
+}
+```
+- **에러 응답** (403 Forbidden):
+  - 이메일 인증이 완료되지 않은 경우
+```json
+{
+  "error": "이메일 인증이 완료되지 않았습니다.",
+  "email_verified": false,
+  "message": "이메일 인증을 완료한 후 서비스를 이용할 수 있습니다."
 }
 ```
 
 ### 4. 토큰 갱신
-- **URL**: `POST /api/auth/refresh/`
+- **URL**: `POST /api/users/auth/refresh/`
 - **설명**: Refresh Token을 사용하여 만료된 Access Token을 새로 발급받습니다
 - **인증**: 불필요 (Refresh Token 자체가 인증 수단)
 - **Request Body**:
@@ -168,6 +185,7 @@ async function apiCall(url, options = {}) {
 - **URL**: `GET /api/users/profile/`
 - **설명**: 현재 로그인한 사용자의 프로필 조회
 - **인증**: JWT Token 필요
+- **이메일 인증 필요**: 이메일 인증이 완료된 사용자만 접근 가능
 - **Response** (200 OK):
 ```json
 {
@@ -190,6 +208,10 @@ async function apiCall(url, options = {}) {
 - **URL**: `POST /api/users/profile/` (생성) 또는 `PUT /api/users/profile/` (수정)
 - **설명**: 사용자 프로필 생성 또는 수정
 - **인증**: JWT Token 필요
+- **이메일 인증 필요**: 이메일 인증이 완료된 사용자만 접근 가능
+- **service_active 자동 설정**:
+  - 이메일 인증 완료: `service_active = true` (서비스 이용 가능)
+  - 이메일 인증 미완료: `service_active = false` (서비스 이용 불가)
 - **Request Body**:
 ```json
 {
@@ -223,6 +245,7 @@ async function apiCall(url, options = {}) {
 - **URL**: `GET /api/users/profile/completeness/`
 - **설명**: 프로필 및 이상형 프로필 완성도 확인
 - **인증**: JWT Token 필요
+- **이메일 인증 필요**: 이메일 인증이 완료된 사용자만 접근 가능
 - **Response** (200 OK):
 ```json
 {
@@ -241,6 +264,7 @@ async function apiCall(url, options = {}) {
 - **URL**: `GET /api/users/ideal-type/`
 - **설명**: 현재 로그인한 사용자의 이상형 프로필 조회
 - **인증**: JWT Token 필요
+- **이메일 인증 필요**: 이메일 인증이 완료된 사용자만 접근 가능
 - **Response** (200 OK):
 ```json
 {
@@ -263,6 +287,7 @@ async function apiCall(url, options = {}) {
 - **URL**: `POST /api/users/ideal-type/` (생성) 또는 `PUT /api/users/ideal-type/` (수정)
 - **설명**: 이상형 프로필 생성 또는 수정
 - **인증**: JWT Token 필요
+- **이메일 인증 필요**: 이메일 인증이 완료된 사용자만 접근 가능
 - **Request Body**:
 ```json
 {
@@ -300,9 +325,10 @@ async function apiCall(url, options = {}) {
 ## 위치 관련 API
 
 ### 10. 위치 업데이트
-- **URL**: `POST /api/users/location/`
+- **URL**: `POST /api/users/location/update/`
 - **설명**: 사용자 현재 위치 업데이트 (30초 주기)
 - **인증**: JWT Token 필요
+- **이메일 인증 필요**: 이메일 인증이 완료된 사용자만 접근 가능
 - **Request Body**:
 ```json
 {
@@ -324,6 +350,7 @@ async function apiCall(url, options = {}) {
 - **URL**: `GET /api/users/location/`
 - **설명**: 현재 로그인한 사용자의 위치 조회
 - **인증**: JWT Token 필요
+- **이메일 인증 필요**: 이메일 인증이 완료된 사용자만 접근 가능
 - **Response** (200 OK):
 ```json
 {
@@ -339,16 +366,17 @@ async function apiCall(url, options = {}) {
 ## 매칭 관련 API
 
 ### 12. 매칭 가능 인원 수 조회
-- **URL**: `GET /api/matches/matchable-count/`
+- **URL**: `GET /api/matching/matchable-count/`
 - **설명**: boundary(반경) 내에서 이상형 조건에 부합하는 인원 수 조회
   - 현재 위치 기준으로 지정된 반경 내에 있는 사람들 중 조건에 부합하는 인원 수를 반환
 - **인증**: JWT Token 필요
+- **이메일 인증 필요**: 이메일 인증이 완료된 사용자만 접근 가능
 - **Query Parameters** (필수):
   - `latitude` (float): 현재 위치의 위도 (예: 37.5665)
   - `longitude` (float): 현재 위치의 경도 (예: 126.9780)
   - `radius` (float): 반경 (km 단위, 예: 0.05 = 50m, 기본값: 0.05)
 - **예시 요청:**
-  - `GET /api/matches/matchable-count/?latitude=37.5665&longitude=126.9780&radius=0.05`
+  - `GET /api/matching/matchable-count/?latitude=37.5665&longitude=126.9780&radius=0.05`
 - **Response** (200 OK):
 ```json
 {
@@ -367,9 +395,10 @@ async function apiCall(url, options = {}) {
 ```
 
 ### 14. 매칭 체크 (포그라운드)
-- **URL**: `GET /api/matches/check/`
+- **URL**: `GET /api/matching/check/`
 - **설명**: 앱이 포그라운드에서 실행 중일 때 새로운 매칭이 있는지 확인 (10초 주기 폴링)
 - **인증**: JWT Token 필요
+- **이메일 인증 필요**: 이메일 인증이 완료된 사용자만 접근 가능
 - **주의**: 포그라운드에서는 알림을 표시하지 않습니다. 백그라운드 알림은 API 19를 통해 등록한 푸시 알림으로 받습니다.
 - **Response** (200 OK):
 ```json
@@ -387,6 +416,8 @@ async function apiCall(url, options = {}) {
 - **URL**: `POST /api/users/consent/`
 - **설명**: 매칭 동의 상태 업데이트
 - **인증**: JWT Token 필요
+- **이메일 인증 필수**: 이메일 인증이 완료되지 않은 사용자는 매칭 동의 활성화 불가 (403 Forbidden)
+- **매칭 동의 활성화 시**: `service_active = true`로 자동 설정
 - **Request Body**:
 ```json
 {
@@ -398,6 +429,16 @@ async function apiCall(url, options = {}) {
 {
   "matching_consent": true,
   "consent_updated_at": "2025-01-15T10:00:00Z"
+}
+```
+- **에러 응답** (403 Forbidden):
+  - 이메일 인증이 완료되지 않은 사용자가 매칭 동의를 활성화하려는 경우
+```json
+{
+  "success": false,
+  "error": "이메일 인증이 완료되지 않았습니다.",
+  "email_verified": false,
+  "message": "매칭 동의를 활성화하려면 먼저 이메일 인증을 완료해주세요."
 }
 ```
 
@@ -423,7 +464,7 @@ async function apiCall(url, options = {}) {
 ## 백그라운드 알림 관련 API
 
 ### 19. 백그라운드 알림 등록
-- **URL**: `POST /api/notifications/register/`
+- **URL**: `POST /api/matching/notifications/register/`
 - **설명**: 앱이 백그라운드에 있거나 화면이 꺼져있을 때 매칭 알림을 받기 위해 푸시 알림 토큰을 등록합니다
 - **인증**: JWT Token 필요
 - **중요**: 
@@ -487,17 +528,18 @@ async function apiCall(url, options = {}) {
 Authorization: Bearer {access_token}
 ```
 
-### 인증이 필요한 API
-- 프로필 관련 API (5-7)
-- 이상형 프로필 관련 API (8-9)
-- 위치 관련 API (10-11)
-- 매칭 관련 API (12, 14)
-- 동의 관리 API (15-16)
-- 백그라운드 알림 관련 API (19)
+### 인증이 필요한 API (이메일 인증 완료 필수)
+- 프로필 관련 API (5-7) - **이메일 인증 완료 필수**
+- 이상형 프로필 관련 API (8-9) - **이메일 인증 완료 필수**
+- 위치 관련 API (10-11) - **이메일 인증 완료 필수**
+- 매칭 관련 API (12, 14) - **이메일 인증 완료 필수**
+- 동의 관리 API (15-16) - **이메일 인증 완료 필수** (매칭 동의 활성화 시)
+- 백그라운드 알림 관련 API (19) - **이메일 인증 완료 필수**
 
 ### 인증이 불필요한 API
 - 회원가입 (1)
-- 전화번호 인증 (2)
-- 로그인 (3)
+- 이메일 인증번호 발송
+- 이메일 인증 (2)
+- 로그인 (3) - **단, 이메일 인증 완료 필수 (로그인 자체는 가능하지만 서비스 이용 불가)**
 - 토큰 갱신 (4)
 

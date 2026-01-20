@@ -23,6 +23,41 @@ from .serializers import (
 )
 
 
+def check_profile_and_ideal_type_complete(user_profile):
+    """
+    프로필과 이상형 프로필이 모두 완성되었는지 확인하는 헬퍼 함수
+    
+    Returns:
+        tuple: (profile_complete, ideal_type_complete, all_complete)
+    """
+    from .models import IdealTypeProfile
+    
+    # 프로필 완성도 체크
+    profile_fields = ['age', 'gender', 'height', 'mbti', 'personality', 'interests']
+    profile_complete = all(getattr(user_profile, field, None) for field in profile_fields)
+    profile_complete = profile_complete and len(user_profile.personality) > 0 and len(user_profile.interests) > 0
+    
+    # 이상형 프로필 완성도 체크
+    ideal_type_complete = False
+    try:
+        ideal_type = user_profile.ideal_type_profile
+        if ideal_type:
+            # 필수 필드 확인 (MBTI는 선택사항)
+            ideal_fields = ['height_min', 'height_max', 'age_min', 'age_max', 
+                          'preferred_personality', 'preferred_interests']
+            ideal_type_complete = all(getattr(ideal_type, field, None) for field in ideal_fields)
+            # 성격과 관심사는 최소 1개 이상 필수
+            ideal_type_complete = ideal_type_complete and \
+                len(ideal_type.preferred_personality) > 0 and \
+                len(ideal_type.preferred_interests) > 0
+    except Exception:
+        ideal_type_complete = False
+    
+    all_complete = profile_complete and ideal_type_complete
+    
+    return profile_complete, ideal_type_complete, all_complete
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register(request):
@@ -69,6 +104,28 @@ def register(request):
                 user.save(update_fields=['email_verified', 'email_verified_at'])
                 # 플래그 삭제
                 cache.delete(verification_completed_key)
+                
+                # 이메일 인증 완료 시 프로필과 이상형 프로필이 모두 완성되었는지 확인하여 service_active 설정
+                # (프로필과 이상형 프로필이 모두 완성되어야 service_active = True)
+                try:
+                    user_profile = user.profile
+                    _, _, all_complete = check_profile_and_ideal_type_complete(user_profile)
+                    
+                    if all_complete:
+                        # 프로필과 이상형 프로필이 모두 완성된 경우에만 service_active = True
+                        if not user_profile.service_active:
+                            user_profile.service_active = True
+                            user_profile.save(update_fields=['service_active'])
+                            print(f'✅ 회원가입 시 이메일 인증 완료 + 프로필 완성: {user.username}의 service_active를 True로 설정')
+                    else:
+                        # 프로필 또는 이상형 프로필이 미완성인 경우 service_active = False
+                        if user_profile.service_active:
+                            user_profile.service_active = False
+                            user_profile.save(update_fields=['service_active'])
+                            print(f'⚠️ 프로필 미완성: {user.username}의 service_active를 False로 설정')
+                except User.DoesNotExist:
+                    # 프로필이 아직 없는 경우 - 나중에 프로필 생성 시 체크됨
+                    pass
         
         # 응답 데이터 (비밀번호 제외)
         response_data = {
@@ -138,6 +195,17 @@ def login(request):
             status=status.HTTP_401_UNAUTHORIZED
         )
     
+    # 이메일 인증 여부 확인
+    if not user.email_verified:
+        return Response(
+            {
+                'error': '이메일 인증이 완료되지 않았습니다.',
+                'email_verified': False,
+                'message': '이메일 인증을 완료한 후 서비스를 이용할 수 있습니다.'
+            },
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
     # JWT 토큰 발급
     refresh = RefreshToken.for_user(user)
     access_token = str(refresh.access_token)
@@ -148,6 +216,7 @@ def login(request):
         'id': user.id,
         'username': user.username,
         'email': user.email,
+        'email_verified': user.email_verified,
     }
     
     # last_login 업데이트
@@ -388,6 +457,28 @@ def verify_email(request):
         user.email_verified_at = timezone.now()
         user.save(update_fields=['email_verified', 'email_verified_at'])
         
+        # 이메일 인증 완료 시 프로필과 이상형 프로필이 모두 완성되었는지 확인하여 service_active 설정
+        # (프로필과 이상형 프로필이 모두 완성되어야 service_active = True)
+        try:
+            user_profile = user.profile
+            _, _, all_complete = check_profile_and_ideal_type_complete(user_profile)
+            
+            if all_complete:
+                # 프로필과 이상형 프로필이 모두 완성된 경우에만 service_active = True
+                if not user_profile.service_active:
+                    user_profile.service_active = True
+                    user_profile.save(update_fields=['service_active'])
+                    print(f'✅ 이메일 인증 완료 + 프로필 완성: {user.username}의 service_active를 True로 설정')
+            else:
+                # 프로필 또는 이상형 프로필이 미완성인 경우 service_active = False
+                if user_profile.service_active:
+                    user_profile.service_active = False
+                    user_profile.save(update_fields=['service_active'])
+                    print(f'⚠️ 프로필 미완성: {user.username}의 service_active를 False로 설정')
+        except User.DoesNotExist:
+            # 프로필이 아직 없는 경우 (회원가입 전 인증) - 나중에 프로필 생성 시 체크됨
+            pass
+        
         # 인증번호 삭제 (한 번만 사용 가능)
         cache.delete(cache_key)
         
@@ -491,6 +582,19 @@ def update_location(request):
                         'success': False,
                         'error': '프로필이 없습니다. 먼저 프로필을 생성해주세요.'
                     }, status=status.HTTP_404_NOT_FOUND)
+            
+            # 이메일 인증 여부 확인 (매칭 활성화를 위한 필수 조건)
+            auth_user = user_profile.user
+            if not auth_user.email_verified:
+                print("⚠️ 이메일 인증이 완료되지 않았습니다. 위치 업데이트가 거부됩니다.")
+                print(f"   User: {user_profile.user.username}")
+                print("=" * 60)
+                return Response({
+                    'success': False,
+                    'error': '이메일 인증이 완료되지 않았습니다. 위치 업데이트를 하려면 먼저 이메일 인증을 완료해주세요.',
+                    'email_verified': False,
+                    'email_verification_required': True
+                }, status=status.HTTP_403_FORBIDDEN)
             
             # 매칭 동의가 OFF인 경우 위치 업데이트 거부
             if not user_profile.matching_consent:
@@ -697,9 +801,13 @@ def profile_view(request):
                     }, status=status.HTTP_404_NOT_FOUND)
             
             serializer = UserSerializer(user_profile)
+            # email_verified 정보 추가 (딕셔너리로 변환하여 수정 가능하게 만듦)
+            response_data = dict(serializer.data)  # OrderedDict를 일반 dict로 변환
+            response_data['email_verified'] = user_profile.user.email_verified
+            print(f'📧 프로필 조회 - email_verified: {response_data.get("email_verified")}, user: {user_profile.user.username}')
             return Response({
                 'success': True,
-                'data': serializer.data
+                'data': response_data
             }, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({
@@ -740,9 +848,36 @@ def profile_view(request):
                 if settings.DEBUG and not request.user.is_authenticated and request.data.get('user_id'):
                     user_id = request.data.get('user_id')
                     auth_user = AuthUser.objects.get(id=user_id)
-                    serializer.save(user=auth_user)
+                    user_profile = serializer.save(user=auth_user)
                 else:
-                    serializer.save(user=request.user)
+                    auth_user = request.user
+                    user_profile = serializer.save(user=auth_user)
+                
+                # 이메일 인증 여부 및 프로필 완성도에 따라 service_active 및 matching_consent 설정
+                if not user_profile.user.email_verified:
+                    # 이메일 인증 미완료: service_active = False, matching_consent = False
+                    user_profile.matching_consent = False
+                    user_profile.service_active = False
+                    user_profile.save(update_fields=['matching_consent', 'service_active'])
+                    print(f'⚠️ 이메일 인증 미완료 사용자: service_active = False, matching_consent = False 설정 ({auth_user.username})')
+                else:
+                    # 이메일 인증 완료: 프로필과 이상형 프로필 완성도 확인
+                    _, _, all_complete = check_profile_and_ideal_type_complete(user_profile)
+                    
+                    if all_complete:
+                        # 프로필과 이상형 프로필이 모두 완성된 경우에만 service_active = True
+                        if not user_profile.service_active:
+                            user_profile.service_active = True
+                            user_profile.save(update_fields=['service_active'])
+                            print(f'✅ 프로필 완성: {auth_user.username}의 service_active를 True로 설정')
+                    else:
+                        # 프로필 또는 이상형 프로필이 미완성인 경우 service_active = False, matching_consent = False
+                        if user_profile.service_active:
+                            user_profile.service_active = False
+                        if user_profile.matching_consent:
+                            user_profile.matching_consent = False
+                        user_profile.save(update_fields=['service_active', 'matching_consent'])
+                        print(f'⚠️ 프로필 미완성: {auth_user.username}의 service_active와 matching_consent를 False로 설정')
                 
                 return Response({
                     'success': True,
@@ -892,7 +1027,27 @@ def ideal_type_view(request):
                     user_profile = auth_user.profile
                     serializer.save(user=user_profile)
                 else:
-                    serializer.save(user=request.user.profile)
+                    user_profile = request.user.profile
+                    serializer.save(user=user_profile)
+                
+                # 이상형 프로필 저장 후 프로필 완성도 확인하여 service_active 및 matching_consent 설정
+                if user_profile.user.email_verified:
+                    _, _, all_complete = check_profile_and_ideal_type_complete(user_profile)
+                    
+                    if all_complete:
+                        # 프로필과 이상형 프로필이 모두 완성된 경우에만 service_active = True
+                        if not user_profile.service_active:
+                            user_profile.service_active = True
+                            user_profile.save(update_fields=['service_active'])
+                            print(f'✅ 이상형 프로필 완성: {user_profile.user.username}의 service_active를 True로 설정')
+                    else:
+                        # 프로필 또는 이상형 프로필이 미완성인 경우 service_active = False, matching_consent = False
+                        if user_profile.service_active:
+                            user_profile.service_active = False
+                        if user_profile.matching_consent:
+                            user_profile.matching_consent = False
+                        user_profile.save(update_fields=['service_active', 'matching_consent'])
+                        print(f'⚠️ 프로필 미완성: {user_profile.user.username}의 service_active와 matching_consent를 False로 설정')
                 
                 return Response({
                     'success': True,
@@ -969,32 +1124,14 @@ def check_profile_completeness(request):
                     'all_complete': False
                 }, status=status.HTTP_200_OK)
         
-        # 프로필 완성도 체크
-        profile_fields = ['age', 'gender', 'height', 'mbti', 'personality', 'interests']
-        profile_complete = all(getattr(profile, field, None) for field in profile_fields)
-        profile_complete = profile_complete and len(profile.personality) > 0 and len(profile.interests) > 0
-        
-        # 이상형 프로필 완성도 체크
-        ideal_type_complete = False
-        try:
-            ideal_type = profile.ideal_type_profile
-            if ideal_type:
-                # 필수 필드 확인 (MBTI는 선택사항)
-                ideal_fields = ['height_min', 'height_max', 'age_min', 'age_max', 
-                              'preferred_personality', 'preferred_interests']
-                ideal_type_complete = all(getattr(ideal_type, field, None) for field in ideal_fields)
-                # 성격과 관심사는 최소 1개 이상 필수
-                ideal_type_complete = ideal_type_complete and \
-                    len(ideal_type.preferred_personality) > 0 and \
-                    len(ideal_type.preferred_interests) > 0
-        except Exception:
-            ideal_type_complete = False
+        # 프로필 완성도 체크 (헬퍼 함수 사용)
+        profile_complete, ideal_type_complete, all_complete = check_profile_and_ideal_type_complete(profile)
         
         return Response({
             'success': True,
             'profile_complete': profile_complete,
             'ideal_type_complete': ideal_type_complete,
-            'all_complete': profile_complete and ideal_type_complete
+            'all_complete': all_complete
         }, status=status.HTTP_200_OK)
     
     except Exception as e:
@@ -1067,10 +1204,73 @@ def update_consent(request):
                     'error': '프로필이 없습니다. 먼저 프로필을 생성해주세요.'
                 }, status=status.HTTP_404_NOT_FOUND)
         
+        # 이메일 인증 여부 확인
+        auth_user = user_profile.user
+        if not auth_user.email_verified:
+            # 이메일 인증이 완료되지 않은 경우 매칭 동의 및 서비스 활성화 변경 완전 차단 (고정)
+            # matching_consent와 service_active는 모두 False로 고정되어 있으며, 변경할 수 없음
+            return Response(
+                {
+                    'success': False,
+                    'error': '이메일 인증이 완료되지 않았습니다.',
+                    'email_verified': False,
+                    'message': '이메일 인증이 완료되지 않아 매칭 동의와 서비스 활성화를 변경할 수 없습니다. 먼저 이메일 인증을 완료해주세요.',
+                    'data': {
+                        'matching_consent': False,  # 항상 False로 고정
+                        'service_active': False,  # 항상 False로 고정
+                        'consent_updated_at': user_profile.consent_updated_at.isoformat() if user_profile.consent_updated_at else None
+                    }
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # 프로필과 이상형 프로필 완성도 확인
+        _, _, all_complete = check_profile_and_ideal_type_complete(user_profile)
+        
+        if not all_complete:
+            # 프로필 또는 이상형 프로필이 미완성인 경우 매칭 동의 변경 차단 (고정)
+            # matching_consent는 False로 고정되어 있으며, 변경할 수 없음
+            if matching_consent:
+                # True로 설정하려고 하면 403 Forbidden 반환
+                return Response(
+                    {
+                        'success': False,
+                        'error': '프로필이 완성되지 않았습니다.',
+                        'message': '매칭 동의를 활성화하려면 프로필과 이상형 프로필을 모두 완성해주세요.',
+                        'data': {
+                            'matching_consent': False,  # 항상 False로 고정
+                            'service_active': user_profile.service_active,
+                            'consent_updated_at': user_profile.consent_updated_at.isoformat() if user_profile.consent_updated_at else None
+                        }
+                    },
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            else:
+                # False로 설정하려는 경우는 허용 (이미 False이므로 변경 없음)
+                return Response(
+                    {
+                        'success': True,
+                        'message': '매칭 동의가 OFF 상태입니다. (프로필 미완성)',
+                        'data': {
+                            'matching_consent': False,
+                            'service_active': user_profile.service_active,
+                            'consent_updated_at': user_profile.consent_updated_at.isoformat() if user_profile.consent_updated_at else None
+                        }
+                    },
+                    status=status.HTTP_200_OK
+                )
+        
+        # 매칭 동의를 활성화하려는 경우 service_active도 True로 설정
+        if matching_consent:
+            user_profile.service_active = True
+            update_fields = ['matching_consent', 'service_active', 'consent_updated_at']
+        else:
+            update_fields = ['matching_consent', 'consent_updated_at']
+        
         # 매칭 동의 상태 업데이트
         user_profile.matching_consent = matching_consent
         user_profile.consent_updated_at = timezone.now()
-        user_profile.save(update_fields=['matching_consent', 'consent_updated_at'])
+        user_profile.save(update_fields=update_fields)
 
         # ------------------------------------------------------------------
         # 매칭 동의 OFF: 관련 매칭 모두 삭제
@@ -1168,6 +1368,7 @@ def update_consent(request):
             'message': f'매칭 동의가 {consent_status}되었습니다.',
             'data': {
                 'matching_consent': user_profile.matching_consent,
+                'service_active': user_profile.service_active,
                 'consent_updated_at': user_profile.consent_updated_at.isoformat()
             }
         }, status=status.HTTP_200_OK)
@@ -1198,33 +1399,33 @@ def password_reset_request(request):
         "expires_in": 120
     }
     """
-    serializer = PasswordResetRequestSerializer(data=request.data)
-    
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-    username = serializer.validated_data['username']
-    email = serializer.validated_data['email']
-    
-    # 사용자 확인 (아이디와 이메일이 일치하는지 확인)
     try:
-        user = AuthUser.objects.get(username=username, email=email)
-    except AuthUser.DoesNotExist:
-        # 보안상 상세 정보 노출하지 않음
-        return Response({
-            'success': False,
-            'error': '아이디와 이메일이 일치하지 않습니다.'
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    # 인증번호 생성 (6자리 숫자)
-    verification_code = ''.join(random.choices(string.digits, k=6))
-    
-    # Redis에 인증번호 저장 (2분 유효시간)
-    cache_key = f'password_reset_code:email:{email}'
-    cache.set(cache_key, verification_code, timeout=120)  # 120초 = 2분
-    
-    # 이메일 발송
-    try:
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        username = serializer.validated_data['username']
+        email = serializer.validated_data['email']
+        
+        # 사용자 확인 (아이디와 이메일이 일치하는지 확인)
+        try:
+            user = AuthUser.objects.get(username=username, email=email)
+        except AuthUser.DoesNotExist:
+            # 보안상 상세 정보 노출하지 않음
+            return Response({
+                'success': False,
+                'error': '아이디와 이메일이 일치하지 않습니다.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 인증번호 생성 (6자리 숫자)
+        verification_code = ''.join(random.choices(string.digits, k=6))
+        
+        # Redis에 인증번호 저장 (2분 유효시간)
+        cache_key = f'password_reset_code:email:{email}'
+        cache.set(cache_key, verification_code, timeout=120)  # 120초 = 2분
+        
+        # 이메일 발송
         subject = '[IdealMatch] 비밀번호 재설정 인증번호를 확인해주세요'
         message = f'''
 안녕하세요! IdealMatch입니다. 👋
@@ -1300,16 +1501,19 @@ IdealMatch 팀
                 print(f"❌ AWS SES 이메일 발송 실패: {error_code} - {error_message}")
                 
                 if settings.DEBUG:
+                    # 개발 환경에서는 SES 실패해도 콘솔에 출력하고 계속 진행
                     print("=" * 60)
                     print("📧 비밀번호 재설정 인증번호 (SES 실패, 콘솔 출력)")
                     print(f"   이메일: {email}")
                     print(f"   인증번호: {verification_code}")
                     print("=" * 60)
-                    
-                return Response({
-                    'success': False,
-                    'error': '이메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요.'
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    # 개발 환경에서는 오류를 반환하지 않고 계속 진행
+                else:
+                    # 프로덕션 환경에서는 오류 반환
+                    return Response({
+                        'success': False,
+                        'error': '이메일 발송에 실패했습니다. 잠시 후 다시 시도해주세요.'
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         else:
             # 일반 SMTP 사용
             send_mail(
@@ -1331,10 +1535,12 @@ IdealMatch 팀
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
-        print(f"❌ 비밀번호 재설정 인증번호 발송 오류: {str(e)}")
+        print(f"❌ 비밀번호 재설정 요청 오류: {str(e)}")
+        import traceback
+        traceback.print_exc()  # 상세한 오류 스택 트레이스 출력
         return Response({
             'success': False,
-            'error': '이메일 발송 중 오류가 발생했습니다.'
+            'error': '서버 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

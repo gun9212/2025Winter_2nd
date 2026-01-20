@@ -12,6 +12,7 @@ from django.db.models import Q
 from decimal import Decimal
 
 from apps.users.models import User, UserLocation, AuthUser
+from apps.users.permissions import IsEmailVerified
 from apps.matching.models import Match, Notification
 from apps.matching.utils import calculate_distance_km, find_matchable_users
 from apps.matching.serializers import (
@@ -23,7 +24,7 @@ from apps.matching.serializers import (
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated if not settings.DEBUG else AllowAny])
+@permission_classes([IsAuthenticated & IsEmailVerified if not settings.DEBUG else AllowAny])
 def matchable_count(request):
     """
     API 12: 매칭 가능 인원 수 조회
@@ -77,6 +78,16 @@ def matchable_count(request):
             'error': 'latitude, longitude, radius는 숫자여야 합니다.'
         }, status=status.HTTP_400_BAD_REQUEST)
     
+    # 이메일 인증 여부 확인 (매칭 활성화를 위한 필수 조건)
+    auth_user = current_user.user
+    if not auth_user.email_verified:
+        return Response({
+            'success': False,
+            'error': '이메일 인증이 완료되지 않았습니다. 매칭 가능 인원 수를 조회하려면 먼저 이메일 인증을 완료해주세요.',
+            'email_verified': False,
+            'email_verification_required': True
+        }, status=status.HTTP_403_FORBIDDEN)
+    
     # 매칭 동의가 OFF인 경우 API 호출 거부
     if not current_user.matching_consent:
         return Response({
@@ -110,7 +121,7 @@ def matchable_count(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated if not settings.DEBUG else AllowAny])
+@permission_classes([IsAuthenticated & IsEmailVerified if not settings.DEBUG else AllowAny])
 def match_check(request):
     """
     API 13: 매칭 체크 (포그라운드)
@@ -145,6 +156,16 @@ def match_check(request):
                 'success': False,
                 'error': '프로필이 없습니다. 먼저 프로필을 생성해주세요.'
             }, status=status.HTTP_404_NOT_FOUND)
+    
+    # 이메일 인증 여부 확인 (매칭 활성화를 위한 필수 조건)
+    auth_user = current_user.user
+    if not auth_user.email_verified:
+        return Response({
+            'success': False,
+            'error': '이메일 인증이 완료되지 않았습니다. 매칭을 확인하려면 먼저 이메일 인증을 완료해주세요.',
+            'email_verified': False,
+            'email_verification_required': True
+        }, status=status.HTTP_403_FORBIDDEN)
     
     # 매칭 동의가 OFF인 경우 API 호출 거부
     if not current_user.matching_consent:
@@ -193,12 +214,8 @@ def match_check(request):
             'error': 'radius는 숫자여야 합니다.'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # 매칭 동의 자동 활성화 (useruser는 제외)
-    if not current_user.matching_consent and current_user.user.username != 'useruser':
-        current_user.matching_consent = True
-        current_user.consent_updated_at = timezone.now()
-        current_user.save(update_fields=['matching_consent', 'consent_updated_at'])
-        print(f'⚠️ 매칭 동의 자동 활성화: {current_user.user.username}')
+    # 매칭 동의 자동 활성화 제거: 이메일 인증이 완료되지 않은 사용자는 매칭 동의를 활성화할 수 없음
+    # (이미 위에서 이메일 인증 여부를 확인했으므로, 여기서는 자동 활성화하지 않음)
     
     # 매칭 가능한 사용자 찾기
     matchable_users = find_matchable_users(
@@ -337,7 +354,7 @@ def match_check(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated if not settings.DEBUG else AllowAny])
+@permission_classes([IsAuthenticated & IsEmailVerified if not settings.DEBUG else AllowAny])
 def register_notification(request):
     """
     API 15: 백그라운드 알림 등록
@@ -402,7 +419,7 @@ def register_notification(request):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated if not settings.DEBUG else AllowAny])
+@permission_classes([IsAuthenticated & IsEmailVerified if not settings.DEBUG else AllowAny])
 def active_match_count(request):
     """
     현재 사용자의 활성 매칭 수 조회 (50m 이내)

@@ -115,7 +115,80 @@ class User(models.Model):
                 'interests': '관심사를 최소 1개 이상 선택해주세요.'
             })
     
+    def _check_profile_completeness(self):
+        """
+        프로필과 이상형 프로필이 모두 완성되었는지 확인하는 내부 메서드
+        Returns:
+            bool: 프로필과 이상형 프로필이 모두 완성되었는지 여부
+        """
+        # 프로필 완성도 체크
+        profile_fields = ['age', 'gender', 'height', 'mbti', 'personality', 'interests']
+        profile_complete = all(getattr(self, field, None) for field in profile_fields)
+        profile_complete = profile_complete and len(self.personality) > 0 and len(self.interests) > 0
+        
+        # 이상형 프로필 완성도 체크
+        ideal_type_complete = False
+        try:
+            ideal_type = self.ideal_type_profile
+            if ideal_type:
+                # 필수 필드 확인 (MBTI는 선택사항)
+                ideal_fields = ['height_min', 'height_max', 'age_min', 'age_max', 
+                              'preferred_personality', 'preferred_interests']
+                ideal_type_complete = all(getattr(ideal_type, field, None) for field in ideal_fields)
+                # 성격과 관심사는 최소 1개 이상 필수
+                ideal_type_complete = ideal_type_complete and \
+                    len(ideal_type.preferred_personality) > 0 and \
+                    len(ideal_type.preferred_interests) > 0
+        except Exception:
+            ideal_type_complete = False
+        
+        return profile_complete and ideal_type_complete
+    
     def save(self, *args, **kwargs):
+        # 이메일 인증이 완료되지 않은 경우 매칭 동의와 서비스 활성화를 강제로 False로 설정
+        if not self.user.email_verified:
+            self.matching_consent = False
+            self.service_active = False
+            print(f'⚠️ 이메일 인증 미완료: {self.user.username}의 매칭 동의와 서비스 활성화를 False로 강제 설정')
+            
+            # update_fields가 지정된 경우 matching_consent와 service_active도 포함시켜야 DB에 저장됨
+            if 'update_fields' in kwargs and kwargs['update_fields'] is not None:
+                if 'matching_consent' not in kwargs['update_fields']:
+                    kwargs['update_fields'] = list(kwargs['update_fields']) + ['matching_consent']
+                if 'service_active' not in kwargs['update_fields']:
+                    kwargs['update_fields'] = list(kwargs['update_fields']) + ['service_active']
+        else:
+            # 이메일 인증 완료 시에도 프로필과 이상형 프로필이 모두 완성되어야 matching_consent = True 가능
+            all_complete = self._check_profile_completeness()
+            
+            if not all_complete:
+                # 프로필 또는 이상형 프로필이 미완성인 경우 matching_consent = False로 강제 설정, service_active = False
+                if self.matching_consent:
+                    self.matching_consent = False
+                    print(f'⚠️ 프로필 미완성: {self.user.username}의 매칭 동의를 False로 강제 설정')
+                    
+                    # update_fields가 지정된 경우 matching_consent도 포함시켜야 DB에 저장됨
+                    if 'update_fields' in kwargs and kwargs['update_fields'] is not None:
+                        if 'matching_consent' not in kwargs['update_fields']:
+                            kwargs['update_fields'] = list(kwargs['update_fields']) + ['matching_consent']
+                
+                # service_active도 False로 설정
+                if self.service_active:
+                    self.service_active = False
+                    if 'update_fields' in kwargs and kwargs['update_fields'] is not None:
+                        if 'service_active' not in kwargs['update_fields']:
+                            kwargs['update_fields'] = list(kwargs['update_fields']) + ['service_active']
+            else:
+                # 프로필과 이상형 프로필이 모두 완성된 경우 service_active = True로 자동 설정
+                if not self.service_active:
+                    self.service_active = True
+                    print(f'✅ 프로필 완성: {self.user.username}의 service_active를 True로 자동 설정')
+                    
+                    # update_fields가 지정된 경우 service_active도 포함시켜야 DB에 저장됨
+                    if 'update_fields' in kwargs and kwargs['update_fields'] is not None:
+                        if 'service_active' not in kwargs['update_fields']:
+                            kwargs['update_fields'] = list(kwargs['update_fields']) + ['service_active']
+        
         self.full_clean()
         super().save(*args, **kwargs)
     
