@@ -1,136 +1,8 @@
 import { CONFIG } from '../../constants/config';
 import { StorageService } from '../storage';
 import { Platform } from 'react-native';
-
-/**
- * Base64 디코딩 함수 (React Native용)
- * @param {string} str - Base64 인코딩된 문자열
- * @returns {string} 디코딩된 문자열
- */
-function base64Decode(str) {
-  try {
-    // Base64 URL 안전 문자를 일반 Base64로 변환
-    let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-    
-    // 패딩 추가
-    while (base64.length % 4) {
-      base64 += '=';
-    }
-    
-    // React Native에서 사용 가능한 방법으로 디코딩
-    // Node.js 환경에서는 Buffer 사용, 브라우저에서는 atob 사용
-    if (typeof Buffer !== 'undefined' && Buffer.from) {
-      // Node.js 환경 (Metro bundler)
-      try {
-        return Buffer.from(base64, 'base64').toString('utf-8');
-      } catch (e) {
-        // Buffer가 작동하지 않으면 폴백으로
-      }
-    }
-    
-    if (typeof atob !== 'undefined') {
-      // 브라우저 환경
-      return atob(base64);
-    }
-    
-    // 직접 구현 (폴백) - React Native용
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-    let output = '';
-    let i = 0;
-    
-    // base64 문자열 정리
-    base64 = base64.replace(/[^A-Za-z0-9\+\/\=]/g, '');
-    
-    while (i < base64.length) {
-      const enc1 = chars.indexOf(base64.charAt(i++));
-      const enc2 = chars.indexOf(base64.charAt(i++));
-      const enc3 = chars.indexOf(base64.charAt(i++));
-      const enc4 = chars.indexOf(base64.charAt(i++));
-      
-      const chr1 = (enc1 << 2) | (enc2 >> 4);
-      const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
-      const chr3 = ((enc3 & 3) << 6) | enc4;
-      
-      output += String.fromCharCode(chr1);
-      
-      if (enc3 !== 64) {
-        output += String.fromCharCode(chr2);
-      }
-      if (enc4 !== 64) {
-        output += String.fromCharCode(chr3);
-      }
-    }
-    
-    return output;
-  } catch (error) {
-    console.error('❌ Base64 디코딩 실패:', error);
-    console.error('   입력 문자열:', str);
-    throw error;
-  }
-}
-
-/**
- * JWT 토큰 디코딩 유틸리티
- * @param {string} token - JWT 토큰
- * @returns {Object|null} 디코딩된 토큰 페이로드 또는 null
- */
-function decodeJWT(token) {
-  try {
-    if (!token) return null;
-    const parts = token.split('.');
-    if (parts.length !== 3) {
-      console.warn('⚠️ JWT 토큰 형식이 올바르지 않습니다:', parts.length, 'parts');
-      return null;
-    }
-    
-    // Base64 URL 디코딩
-    const payload = parts[1];
-    if (!payload) {
-      console.warn('⚠️ JWT 페이로드가 비어있습니다');
-      return null;
-    }
-    
-    const decoded = base64Decode(payload);
-    if (!decoded || decoded.trim().length === 0) {
-      console.warn('⚠️ Base64 디코딩 결과가 비어있습니다');
-      return null;
-    }
-    
-    // JSON 파싱
-    const parsed = JSON.parse(decoded);
-    return parsed;
-  } catch (error) {
-    console.error('❌ JWT 디코딩 실패:', error);
-    console.error('   토큰 일부:', token ? token.substring(0, 50) + '...' : 'null');
-    return null;
-  }
-}
-
-/**
- * 토큰 만료 시간 확인
- * @param {string} token - JWT 토큰
- * @returns {number|null} 만료까지 남은 시간 (밀리초) 또는 null
- */
-function getTokenExpirationTime(token) {
-  const decoded = decodeJWT(token);
-  if (!decoded || !decoded.exp) return null;
-  
-  // exp는 초 단위이므로 밀리초로 변환
-  const expirationTime = decoded.exp * 1000;
-  const currentTime = Date.now();
-  return expirationTime - currentTime;
-}
-
-/**
- * 토큰이 곧 만료되는지 확인 (1분 이내)
- * @param {string} token - JWT 토큰
- * @returns {boolean} 곧 만료되는지 여부
- */
-function isTokenExpiringSoon(token) {
-  const timeUntilExpiration = getTokenExpirationTime(token);
-  if (timeUntilExpiration === null) return true; // 만료 시간을 알 수 없으면 true 반환
-  return timeUntilExpiration < 60 * 1000; // 1분 = 60,000ms
-}
+import { isTokenExpiringSoon } from './tokenUtils';
+import { appendUserIdToSearchParams, normalizeResponseData, setUserIdOnBody } from './requestUtils';
 
 /**
  * 실제 백엔드 API 클라이언트
@@ -477,8 +349,7 @@ class ApiClient {
         if (__DEV__) {
           const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
           if (testUserId) {
-            requestBody.user_id = testUserId;
-            console.log('🔧 디버그 모드: 토큰 없음, user_id 추가', requestBody.user_id);
+            setUserIdOnBody(requestBody, testUserId, '🔧 디버그 모드: 토큰 없음, user_id 추가');
           } else {
             const errorMsg = '로그인이 필요합니다. 위치 업데이트를 위해 먼저 로그인해주세요.';
             console.error('❌', errorMsg);
@@ -568,7 +439,7 @@ class ApiClient {
 
       return {
         success: true,
-        data: response.data || response,
+        data: normalizeResponseData(response),
       };
     } catch (error) {
       console.error('❌ 프로필 조회 실패:', error);
@@ -592,8 +463,7 @@ class ApiClient {
       const testUserId = CONFIG && CONFIG.TEST_USER_ID;
       
       if (__DEV__ && !token && testUserId) {
-        requestBody.user_id = testUserId;
-        console.log('🔧 디버그 모드: user_id 추가', requestBody.user_id);
+        setUserIdOnBody(requestBody, testUserId, '🔧 디버그 모드: user_id 추가');
       }
 
       console.log('🌐 프로필 저장 API 요청:', {
@@ -611,7 +481,7 @@ class ApiClient {
 
       return {
         success: true,
-        data: response.data || response,
+        data: normalizeResponseData(response),
       };
     } catch (error) {
       console.error('❌ 프로필 저장 실패:', error);
@@ -661,7 +531,7 @@ class ApiClient {
 
       return {
         success: true,
-        data: response.data || response,
+        data: normalizeResponseData(response),
       };
     } catch (error) {
       console.error('❌ 이상형 프로필 조회 실패:', error);
@@ -722,7 +592,7 @@ class ApiClient {
 
       return {
         success: true,
-        data: response.data || response,
+        data: normalizeResponseData(response),
       };
     } catch (error) {
       console.error('❌ 이상형 프로필 저장 실패:', error);
@@ -1082,8 +952,7 @@ class ApiClient {
       const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
       
       if (!token) {
-        params.append('user_id', testUserId.toString());
-        console.log('🔧 토큰 없음, user_id 추가:', testUserId);
+        appendUserIdToSearchParams(params, testUserId, '🔧 토큰 없음, user_id 추가:');
       }
 
       console.log('🌐 매칭 가능 인원 수 API 요청:', {
@@ -1097,7 +966,7 @@ class ApiClient {
 
       console.log('✅ 매칭 가능 인원 수 API 응답:', response);
 
-      const data = response.data || response;
+      const data = normalizeResponseData(response);
       return {
         success: true,
         count: data.matchable_count || 0,
@@ -1139,8 +1008,7 @@ class ApiClient {
       if (!token) {
         // 디버그 모드에서만 user_id 사용 허용
         if (__DEV__ && testUserId) {
-          params.append('user_id', testUserId.toString());
-          console.log('🔧 디버그 모드: 토큰 없음, user_id 추가:', testUserId);
+          appendUserIdToSearchParams(params, testUserId, '🔧 디버그 모드: 토큰 없음, user_id 추가:');
         } else {
           const errorMsg = '로그인이 필요합니다. 활성 매칭 수 조회를 위해 먼저 로그인해주세요.';
           console.error('❌', errorMsg);
@@ -1166,7 +1034,7 @@ class ApiClient {
 
       console.log('✅ 활성 매칭 수 API 응답:', response);
 
-      const data = response.data || response;
+      const data = normalizeResponseData(response);
       return {
         success: true,
         count: data.count || 0,
@@ -1201,8 +1069,7 @@ class ApiClient {
       const token = await StorageService.getAccessToken();
       const testUserId = userId || (CONFIG && CONFIG.TEST_USER_ID);
       if (__DEV__ && !token && testUserId) {
-        requestBody.user_id = testUserId;
-        console.log('🔧 디버그 모드: user_id 추가', requestBody.user_id);
+        setUserIdOnBody(requestBody, testUserId, '🔧 디버그 모드: user_id 추가');
       }
 
       console.log('🌐 매칭 동의 업데이트 API 요청:', {
@@ -1221,7 +1088,7 @@ class ApiClient {
       return {
         success: true,
         message: response.message || '매칭 동의가 업데이트되었습니다.',
-        data: response.data || response,
+        data: normalizeResponseData(response),
         // email_verified 정보도 함께 전달 (이메일 인증 미완료 시 False로 강제 설정된 경우)
         email_verified: response.email_verified,
       };
@@ -1265,8 +1132,7 @@ class ApiClient {
       const token = await StorageService.getAccessToken();
       const testUserId = CONFIG && CONFIG.TEST_USER_ID;
       if (__DEV__ && !token && testUserId) {
-        requestBody.user_id = testUserId;
-        console.log('🔧 디버그 모드: user_id 추가', requestBody.user_id);
+        setUserIdOnBody(requestBody, testUserId, '🔧 디버그 모드: user_id 추가');
       }
 
       const response = await this.request('/matching/notifications/register/', {
@@ -1306,8 +1172,7 @@ class ApiClient {
       if (!token) {
         // 디버그 모드에서만 user_id 사용 허용
         if (__DEV__ && testUserId) {
-          params.append('user_id', testUserId.toString());
-          console.log('🔧 디버그 모드: 토큰 없음, user_id 추가:', testUserId);
+          appendUserIdToSearchParams(params, testUserId, '🔧 디버그 모드: 토큰 없음, user_id 추가:');
         } else {
           const errorMsg = '로그인이 필요합니다. 매칭 체크를 위해 먼저 로그인해주세요.';
           console.error('❌', errorMsg);
@@ -1337,7 +1202,7 @@ class ApiClient {
 
       // 응답 형식 변환 (백엔드 응답을 프론트엔드 형식으로)
       // 백엔드 응답: { success: true, data: { has_new_match, latest_match } }
-      const data = response.data || response;
+      const data = normalizeResponseData(response);
       
       console.log('🔍 매칭 응답 데이터 파싱:', {
         hasData: !!data,

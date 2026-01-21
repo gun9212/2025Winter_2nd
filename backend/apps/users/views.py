@@ -59,6 +59,107 @@ def check_profile_and_ideal_type_complete(user_profile):
     return profile_complete, ideal_type_complete, all_complete
 
 
+def _get_user_profile_by_user_id(
+    user_id,
+    *,
+    auth_user_missing_response,
+    profile_missing_response,
+    auth_user_missing_status=status.HTTP_404_NOT_FOUND,
+    profile_missing_status=status.HTTP_404_NOT_FOUND,
+):
+    """
+    user_id(AuthUser.id)로 User 프로필 로딩.
+    - 호출부의 응답 포맷/상태코드를 유지하기 위해 (profile, error_response, auth_user) 형태로 반환합니다.
+    """
+    try:
+        auth_user = AuthUser.objects.get(id=user_id)
+    except AuthUser.DoesNotExist:
+        payload = auth_user_missing_response(user_id) if callable(auth_user_missing_response) else auth_user_missing_response
+        return None, Response(payload, status=auth_user_missing_status), None
+
+    try:
+        return auth_user.profile, None, auth_user
+    except User.DoesNotExist:
+        payload = profile_missing_response(user_id) if callable(profile_missing_response) else profile_missing_response
+        return None, Response(payload, status=profile_missing_status), auth_user
+
+
+def _get_user_profile_from_request(
+    request,
+    *,
+    user_id_sources=('query',),
+    missing_user_id_response=None,
+    missing_user_id_status=status.HTTP_400_BAD_REQUEST,
+    auth_user_missing_response=None,
+    auth_user_missing_status=status.HTTP_404_NOT_FOUND,
+    profile_missing_response=None,
+    profile_missing_status=status.HTTP_404_NOT_FOUND,
+    authed_profile_missing_response=None,
+    authed_profile_missing_status=status.HTTP_404_NOT_FOUND,
+):
+    """
+    DEBUG 환경에서 인증 우회 시(user_id로 로딩), 또는 정상 환경에서 request.user.profile 로딩을 공통화.
+    - 반환: (user_profile, error_response, debug_user_id)
+    """
+    if settings.DEBUG and not request.user.is_authenticated:
+        user_id = None
+        for src in user_id_sources:
+            if src == 'query':
+                user_id = request.query_params.get('user_id')
+            elif src == 'data':
+                user_id = request.data.get('user_id')
+            if user_id:
+                break
+
+        if not user_id:
+            return None, Response(missing_user_id_response, status=missing_user_id_status), None
+
+        profile, error_response, _auth_user = _get_user_profile_by_user_id(
+            user_id,
+            auth_user_missing_response=auth_user_missing_response or profile_missing_response,
+            profile_missing_response=profile_missing_response,
+            auth_user_missing_status=auth_user_missing_status,
+            profile_missing_status=profile_missing_status,
+        )
+        return profile, error_response, user_id
+
+    # 정상 모드: 인증된 사용자
+    try:
+        return request.user.profile, None, None
+    except User.DoesNotExist:
+        return None, Response(authed_profile_missing_response, status=authed_profile_missing_status), None
+
+
+def _deny_if_email_not_verified(user_profile, *, error_message: str):
+    """이메일 인증 미완료 시 기존 응답 포맷으로 403 반환."""
+    auth_user = user_profile.user
+    if auth_user.email_verified:
+        return None
+    return Response(
+        {
+            'success': False,
+            'error': error_message,
+            'email_verified': False,
+            'email_verification_required': True,
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
+def _deny_if_matching_consent_off(user_profile, *, error_message: str):
+    """매칭 동의 OFF 시 기존 응답 포맷으로 403 반환."""
+    if user_profile.matching_consent:
+        return None
+    return Response(
+        {
+            'success': False,
+            'error': error_message,
+            'matching_consent_required': True,
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register(request):
@@ -593,22 +694,20 @@ def update_location(request):
                     }, status=status.HTTP_400_BAD_REQUEST)
                 
                 try:
-                    # user_id로 User 프로필 찾기
-                    auth_user = AuthUser.objects.get(id=user_id)
-                    user_profile = auth_user.profile
+                    user_profile, error_response, _auth_user = _get_user_profile_by_user_id(
+                        user_id,
+                        auth_user_missing_response=lambda uid: {
+                            'success': False,
+                            'error': f'user_id {uid}에 해당하는 사용자가 없습니다.',
+                        },
+                        profile_missing_response=lambda uid: {
+                            'success': False,
+                            'error': f'user_id {uid}에 해당하는 프로필이 없습니다. 먼저 프로필을 생성해주세요.',
+                        },
+                    )
+                    if error_response:
+                        return error_response
                     print(f"✅ 사용자 프로필 찾음: {user_profile.user.username}")
-                except AuthUser.DoesNotExist:
-                    print(f"❌ AuthUser {user_id}가 존재하지 않습니다.")
-                    return Response({
-                        'success': False,
-                        'error': f'user_id {user_id}에 해당하는 사용자가 없습니다.'
-                    }, status=status.HTTP_404_NOT_FOUND)
-                except User.DoesNotExist:
-                    print(f"❌ User 프로필이 없습니다 (user_id: {user_id})")
-                    return Response({
-                        'success': False,
-                        'error': f'user_id {user_id}에 해당하는 프로필이 없습니다. 먼저 프로필을 생성해주세요.'
-                    }, status=status.HTTP_404_NOT_FOUND)
                 except Exception as e:
                     print(f"❌ 프로필 조회 중 예외 발생: {str(e)}")
                     import traceback
@@ -633,23 +732,20 @@ def update_location(request):
                 print("⚠️ 이메일 인증이 완료되지 않았습니다. 위치 업데이트가 거부됩니다.")
                 print(f"   User: {user_profile.user.username}")
                 print("=" * 60)
-                return Response({
-                    'success': False,
-                    'error': '이메일 인증이 완료되지 않았습니다. 위치 업데이트를 하려면 먼저 이메일 인증을 완료해주세요.',
-                    'email_verified': False,
-                    'email_verification_required': True
-                }, status=status.HTTP_403_FORBIDDEN)
+                return _deny_if_email_not_verified(
+                    user_profile,
+                    error_message='이메일 인증이 완료되지 않았습니다. 위치 업데이트를 하려면 먼저 이메일 인증을 완료해주세요.',
+                )
             
             # 매칭 동의가 OFF인 경우 위치 업데이트 거부
             if not user_profile.matching_consent:
                 print("⚠️ 매칭 동의가 OFF 상태입니다. 위치 업데이트가 거부됩니다.")
                 print(f"   User: {user_profile.user.username}")
                 print("=" * 60)
-                return Response({
-                    'success': False,
-                    'error': '매칭 동의가 OFF 상태입니다. 위치 업데이트를 하려면 매칭 동의를 ON으로 설정해주세요.',
-                    'matching_consent_required': True
-                }, status=status.HTTP_403_FORBIDDEN)
+                return _deny_if_matching_consent_off(
+                    user_profile,
+                    error_message='매칭 동의가 OFF 상태입니다. 위치 업데이트를 하려면 매칭 동의를 ON으로 설정해주세요.',
+                )
             
             # useruser는 위치 업데이트 제외
             if user_profile.user.username == 'useruser':
@@ -737,37 +833,30 @@ def get_location(request):
     print("=" * 60)
     
     try:
-        # 개발 환경에서 인증 없이 테스트하는 경우
-        if settings.DEBUG and not request.user.is_authenticated:
-            user_id = request.query_params.get('user_id')
-            print(f"🔧 디버그 모드: 인증 없음, user_id: {user_id}")
-            if not user_id:
-                error_msg = '테스트 모드: user_id가 필요합니다. (예: /api/users/location/?user_id=1)'
-                print(f"❌ {error_msg}")
-                print("=" * 60)
-                return Response({
-                    'success': False,
-                    'error': error_msg
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            try:
-                # user_id로 User 프로필 찾기
-                auth_user = AuthUser.objects.get(id=user_id)
-                user_profile = auth_user.profile
-            except (AuthUser.DoesNotExist, User.DoesNotExist):
-                return Response({
-                    'success': False,
-                    'error': f'user_id {user_id}에 해당하는 프로필이 없습니다.'
-                }, status=status.HTTP_404_NOT_FOUND)
-        else:
-            # 정상 모드: 인증된 사용자 사용
-            try:
-                user_profile = request.user.profile
-            except User.DoesNotExist:
-                return Response({
-                    'success': False,
-                    'error': '프로필이 없습니다. 먼저 프로필을 생성해주세요.'
-                }, status=status.HTTP_404_NOT_FOUND)
+        user_profile, error_response, debug_user_id = _get_user_profile_from_request(
+            request,
+            user_id_sources=('query',),
+            missing_user_id_response={
+                'success': False,
+                'error': '테스트 모드: user_id가 필요합니다. (예: /api/users/location/?user_id=1)',
+            },
+            auth_user_missing_response=lambda uid: {
+                'success': False,
+                'error': f'user_id {uid}에 해당하는 프로필이 없습니다.',
+            },
+            profile_missing_response=lambda uid: {
+                'success': False,
+                'error': f'user_id {uid}에 해당하는 프로필이 없습니다.',
+            },
+            authed_profile_missing_response={
+                'success': False,
+                'error': '프로필이 없습니다. 먼저 프로필을 생성해주세요.',
+            },
+        )
+        if debug_user_id is not None:
+            print(f"🔧 디버그 모드: 인증 없음, user_id: {debug_user_id}")
+        if error_response:
+            return error_response
         
         # 위치 정보 조회
         try:
@@ -817,32 +906,28 @@ def profile_view(request):
     # GET 요청: 프로필 조회
     if request.method == 'GET':
         try:
-            # 개발 환경에서 인증 없이 테스트하는 경우
-            if settings.DEBUG and not request.user.is_authenticated:
-                user_id = request.query_params.get('user_id') or request.data.get('user_id')
-                if not user_id:
-                    return Response({
-                        'success': False,
-                        'error': '테스트 모드: user_id가 필요합니다. (예: ?user_id=1)'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                
-                try:
-                    auth_user = AuthUser.objects.get(id=user_id)
-                    user_profile = auth_user.profile
-                except (AuthUser.DoesNotExist, User.DoesNotExist):
-                    return Response({
-                        'success': False,
-                        'message': '프로필이 없습니다.'
-                    }, status=status.HTTP_404_NOT_FOUND)
-            else:
-                # 정상 모드: 인증된 사용자 사용
-                try:
-                    user_profile = request.user.profile
-                except User.DoesNotExist:
-                    return Response({
-                        'success': False,
-                        'message': '프로필이 없습니다.'
-                    }, status=status.HTTP_404_NOT_FOUND)
+            user_profile, error_response, _debug_user_id = _get_user_profile_from_request(
+                request,
+                user_id_sources=('query', 'data'),
+                missing_user_id_response={
+                    'success': False,
+                    'error': '테스트 모드: user_id가 필요합니다. (예: ?user_id=1)',
+                },
+                auth_user_missing_response={
+                    'success': False,
+                    'message': '프로필이 없습니다.',
+                },
+                profile_missing_response={
+                    'success': False,
+                    'message': '프로필이 없습니다.',
+                },
+                authed_profile_missing_response={
+                    'success': False,
+                    'message': '프로필이 없습니다.',
+                },
+            )
+            if error_response:
+                return error_response
             
             serializer = UserSerializer(user_profile)
             # email_verified 정보 추가 (딕셔너리로 변환하여 수정 가능하게 만듦)
@@ -969,44 +1054,36 @@ def ideal_type_view(request):
     # GET 요청: 이상형 프로필 조회
     if request.method == 'GET':
         try:
-            # 개발 환경에서 인증 없이 테스트하는 경우
-            if settings.DEBUG and not request.user.is_authenticated:
-                user_id = request.query_params.get('user_id') or request.data.get('user_id')
-                if not user_id:
-                    return Response({
-                        'success': False,
-                        'error': '테스트 모드: user_id가 필요합니다. (예: ?user_id=1)'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                
-                try:
-                    auth_user = AuthUser.objects.get(id=user_id)
-                    user_profile = auth_user.profile
-                    ideal_type = user_profile.ideal_type_profile
-                except (AuthUser.DoesNotExist, User.DoesNotExist):
-                    return Response({
-                        'success': False,
-                        'message': '프로필이 없습니다.'
-                    }, status=status.HTTP_404_NOT_FOUND)
-                except IdealTypeProfile.DoesNotExist:
-                    return Response({
-                        'success': False,
-                        'message': '이상형 프로필이 없습니다.'
-                    }, status=status.HTTP_404_NOT_FOUND)
-            else:
-                # 정상 모드: 인증된 사용자 사용
-                try:
-                    user_profile = request.user.profile
-                    ideal_type = user_profile.ideal_type_profile
-                except User.DoesNotExist:
-                    return Response({
-                        'success': False,
-                        'message': '프로필이 없습니다.'
-                    }, status=status.HTTP_404_NOT_FOUND)
-                except IdealTypeProfile.DoesNotExist:
-                    return Response({
-                        'success': False,
-                        'message': '이상형 프로필이 없습니다.'
-                    }, status=status.HTTP_404_NOT_FOUND)
+            user_profile, error_response, _debug_user_id = _get_user_profile_from_request(
+                request,
+                user_id_sources=('query', 'data'),
+                missing_user_id_response={
+                    'success': False,
+                    'error': '테스트 모드: user_id가 필요합니다. (예: ?user_id=1)',
+                },
+                auth_user_missing_response={
+                    'success': False,
+                    'message': '프로필이 없습니다.',
+                },
+                profile_missing_response={
+                    'success': False,
+                    'message': '프로필이 없습니다.',
+                },
+                authed_profile_missing_response={
+                    'success': False,
+                    'message': '프로필이 없습니다.',
+                },
+            )
+            if error_response:
+                return error_response
+
+            try:
+                ideal_type = user_profile.ideal_type_profile
+            except IdealTypeProfile.DoesNotExist:
+                return Response({
+                    'success': False,
+                    'message': '이상형 프로필이 없습니다.'
+                }, status=status.HTTP_404_NOT_FOUND)
             
             serializer = IdealTypeProfileSerializer(ideal_type)
             return Response({
@@ -1152,36 +1229,30 @@ def check_profile_completeness(request):
     user_id를 query parameter로 전송하면 해당 사용자의 완성도 확인
     """
     try:
-        # 개발 환경에서 인증 없이 테스트하는 경우
-        if settings.DEBUG and not request.user.is_authenticated:
-            user_id = request.query_params.get('user_id') or request.data.get('user_id')
-            if not user_id:
-                return Response({
-                    'success': False,
-                    'error': '테스트 모드: user_id가 필요합니다. (예: ?user_id=1)'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            try:
-                auth_user = AuthUser.objects.get(id=user_id)
-                profile = auth_user.profile
-            except (AuthUser.DoesNotExist, User.DoesNotExist):
-                return Response({
-                    'success': True,
-                    'profile_complete': False,
-                    'ideal_type_complete': False,
-                    'all_complete': False
-                }, status=status.HTTP_200_OK)
-        else:
-            # 정상 모드: 인증된 사용자 사용
-            try:
-                profile = request.user.profile
-            except User.DoesNotExist:
-                return Response({
-                    'success': True,
-                    'profile_complete': False,
-                    'ideal_type_complete': False,
-                    'all_complete': False
-                }, status=status.HTTP_200_OK)
+        missing_payload = {
+            'success': True,
+            'profile_complete': False,
+            'ideal_type_complete': False,
+            'all_complete': False
+        }
+
+        profile, error_response, _debug_user_id = _get_user_profile_from_request(
+            request,
+            user_id_sources=('query', 'data'),
+            missing_user_id_response={
+                'success': False,
+                'error': '테스트 모드: user_id가 필요합니다. (예: ?user_id=1)',
+            },
+            missing_user_id_status=status.HTTP_400_BAD_REQUEST,
+            auth_user_missing_response=missing_payload,
+            auth_user_missing_status=status.HTTP_200_OK,
+            profile_missing_response=missing_payload,
+            profile_missing_status=status.HTTP_200_OK,
+            authed_profile_missing_response=missing_payload,
+            authed_profile_missing_status=status.HTTP_200_OK,
+        )
+        if error_response:
+            return error_response
         
         # 프로필 완성도 체크 (헬퍼 함수 사용)
         profile_complete, ideal_type_complete, all_complete = check_profile_and_ideal_type_complete(profile)
@@ -1236,32 +1307,28 @@ def update_consent(request):
     matching_consent = serializer.validated_data['matching_consent']
     
     try:
-        # 개발 환경에서 인증 없이 테스트하는 경우
-        if settings.DEBUG and not request.user.is_authenticated:
-            user_id = request.data.get('user_id')
-            if not user_id:
-                return Response({
-                    'success': False,
-                    'error': '테스트 모드: user_id가 필요합니다. (예: {"user_id": 1, "matching_consent": true})'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            try:
-                auth_user = AuthUser.objects.get(id=user_id)
-                user_profile = auth_user.profile
-            except (AuthUser.DoesNotExist, User.DoesNotExist):
-                return Response({
-                    'success': False,
-                    'error': f'user_id {user_id}에 해당하는 프로필이 없습니다. 먼저 프로필을 생성해주세요.'
-                }, status=status.HTTP_404_NOT_FOUND)
-        else:
-            # 정상 모드: 인증된 사용자 사용
-            try:
-                user_profile = request.user.profile
-            except User.DoesNotExist:
-                return Response({
-                    'success': False,
-                    'error': '프로필이 없습니다. 먼저 프로필을 생성해주세요.'
-                }, status=status.HTTP_404_NOT_FOUND)
+        user_profile, error_response, _debug_user_id = _get_user_profile_from_request(
+            request,
+            user_id_sources=('data',),
+            missing_user_id_response={
+                'success': False,
+                'error': '테스트 모드: user_id가 필요합니다. (예: {"user_id": 1, "matching_consent": true})',
+            },
+            auth_user_missing_response=lambda uid: {
+                'success': False,
+                'error': f'user_id {uid}에 해당하는 프로필이 없습니다. 먼저 프로필을 생성해주세요.',
+            },
+            profile_missing_response=lambda uid: {
+                'success': False,
+                'error': f'user_id {uid}에 해당하는 프로필이 없습니다. 먼저 프로필을 생성해주세요.',
+            },
+            authed_profile_missing_response={
+                'success': False,
+                'error': '프로필이 없습니다. 먼저 프로필을 생성해주세요.',
+            },
+        )
+        if error_response:
+            return error_response
         
         # 이메일 인증 여부 확인
         auth_user = user_profile.user

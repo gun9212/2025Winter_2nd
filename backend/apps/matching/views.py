@@ -24,6 +24,68 @@ from apps.matching.serializers import (
 )
 
 
+def _get_current_user_profile(request, *, user_id_source: str = 'query', authed_missing_profile_error: str = '프로필이 없습니다. 먼저 프로필을 생성해주세요.'):
+    """
+    DEBUG 모드에서 인증 없이 테스트할 때 user_id로 프로필을 로딩하는 공통 로직.
+    - 기존 응답 포맷/상태코드를 그대로 유지하기 위해 (profile, error_response) 형태로 반환합니다.
+    """
+    if settings.DEBUG and not request.user.is_authenticated:
+        user_id = request.query_params.get('user_id') if user_id_source == 'query' else request.data.get('user_id')
+        if not user_id:
+            return None, Response(
+                {'success': False, 'error': '테스트 모드: user_id가 필요합니다.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            auth_user = AuthUser.objects.get(id=user_id)
+            return auth_user.profile, None
+        except Exception:
+            return None, Response(
+                {'success': False, 'error': f'user_id {user_id}에 해당하는 프로필이 없습니다.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+    # 정상 모드: 인증된 사용자
+    try:
+        return request.user.profile, None
+    except User.DoesNotExist:
+        return None, Response(
+            {'success': False, 'error': authed_missing_profile_error},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+
+def _deny_if_email_not_verified(user_profile, *, error_message: str):
+    """이메일 인증 미완료 시 기존 응답 포맷으로 403 반환."""
+    auth_user = user_profile.user
+    if auth_user.email_verified:
+        return None
+    return Response(
+        {
+            'success': False,
+            'error': error_message,
+            'email_verified': False,
+            'email_verification_required': True,
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
+def _deny_if_matching_consent_off(user_profile, *, error_message: str):
+    """매칭 동의 OFF 시 기존 응답 포맷으로 403 반환."""
+    if user_profile.matching_consent:
+        return None
+    return Response(
+        {
+            'success': False,
+            'error': error_message,
+            'matching_consent_required': True,
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated & IsEmailVerified if not settings.DEBUG else AllowAny])
 def matchable_count(request):
@@ -31,32 +93,9 @@ def matchable_count(request):
     API 12: 매칭 가능 인원 수 조회
     GET /api/matching/matchable-count/
     """
-    # 개발 모드에서 인증 없이 테스트하는 경우
-    if settings.DEBUG and not request.user.is_authenticated:
-        user_id = request.query_params.get('user_id')
-        if not user_id:
-            return Response({
-                'success': False,
-                'error': '테스트 모드: user_id가 필요합니다.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            auth_user = AuthUser.objects.get(id=user_id)
-            current_user = auth_user.profile
-        except Exception:
-            return Response({
-                'success': False,
-                'error': f'user_id {user_id}에 해당하는 프로필이 없습니다.'
-            }, status=status.HTTP_404_NOT_FOUND)
-    else:
-        # 정상 모드: 인증된 사용자
-        try:
-            current_user = request.user.profile
-        except User.DoesNotExist:
-            return Response({
-                'success': False,
-                'error': '프로필이 없습니다. 먼저 프로필을 생성해주세요.'
-            }, status=status.HTTP_404_NOT_FOUND)
+    current_user, error_response = _get_current_user_profile(request, user_id_source='query')
+    if error_response:
+        return error_response
     
     # Query Parameters
     latitude = request.query_params.get('latitude')
@@ -79,23 +118,19 @@ def matchable_count(request):
             'error': 'latitude, longitude, radius는 숫자여야 합니다.'
         }, status=status.HTTP_400_BAD_REQUEST)
     
-    # 이메일 인증 여부 확인 (매칭 활성화를 위한 필수 조건)
-    auth_user = current_user.user
-    if not auth_user.email_verified:
-        return Response({
-            'success': False,
-            'error': '이메일 인증이 완료되지 않았습니다. 매칭 가능 인원 수를 조회하려면 먼저 이메일 인증을 완료해주세요.',
-            'email_verified': False,
-            'email_verification_required': True
-        }, status=status.HTTP_403_FORBIDDEN)
+    denied = _deny_if_email_not_verified(
+        current_user,
+        error_message='이메일 인증이 완료되지 않았습니다. 매칭 가능 인원 수를 조회하려면 먼저 이메일 인증을 완료해주세요.',
+    )
+    if denied:
+        return denied
     
-    # 매칭 동의가 OFF인 경우 API 호출 거부
-    if not current_user.matching_consent:
-        return Response({
-            'success': False,
-            'error': '매칭 동의가 OFF 상태입니다. 매칭 가능 인원 수를 조회하려면 매칭 동의를 ON으로 설정해주세요.',
-            'matching_consent_required': True
-        }, status=status.HTTP_403_FORBIDDEN)
+    denied = _deny_if_matching_consent_off(
+        current_user,
+        error_message='매칭 동의가 OFF 상태입니다. 매칭 가능 인원 수를 조회하려면 매칭 동의를 ON으로 설정해주세요.',
+    )
+    if denied:
+        return denied
     
     # 매칭 가능한 사용자 찾기
     matchable_users = find_matchable_users(
@@ -131,50 +166,23 @@ def match_check(request):
     새로운 매칭 발생 여부를 확인합니다.
     포그라운드에서는 알림을 표시하지 않습니다.
     """
-    # 개발 모드에서 인증 없이 테스트하는 경우
-    if settings.DEBUG and not request.user.is_authenticated:
-        user_id = request.query_params.get('user_id')
-        if not user_id:
-            return Response({
-                'success': False,
-                'error': '테스트 모드: user_id가 필요합니다.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            auth_user = AuthUser.objects.get(id=user_id)
-            current_user = auth_user.profile
-        except Exception:
-            return Response({
-                'success': False,
-                'error': f'user_id {user_id}에 해당하는 프로필이 없습니다.'
-            }, status=status.HTTP_404_NOT_FOUND)
-    else:
-        # 정상 모드: 인증된 사용자
-        try:
-            current_user = request.user.profile
-        except User.DoesNotExist:
-            return Response({
-                'success': False,
-                'error': '프로필이 없습니다. 먼저 프로필을 생성해주세요.'
-            }, status=status.HTTP_404_NOT_FOUND)
+    current_user, error_response = _get_current_user_profile(request, user_id_source='query')
+    if error_response:
+        return error_response
     
-    # 이메일 인증 여부 확인 (매칭 활성화를 위한 필수 조건)
-    auth_user = current_user.user
-    if not auth_user.email_verified:
-        return Response({
-            'success': False,
-            'error': '이메일 인증이 완료되지 않았습니다. 매칭을 확인하려면 먼저 이메일 인증을 완료해주세요.',
-            'email_verified': False,
-            'email_verification_required': True
-        }, status=status.HTTP_403_FORBIDDEN)
+    denied = _deny_if_email_not_verified(
+        current_user,
+        error_message='이메일 인증이 완료되지 않았습니다. 매칭을 확인하려면 먼저 이메일 인증을 완료해주세요.',
+    )
+    if denied:
+        return denied
     
-    # 매칭 동의가 OFF인 경우 API 호출 거부
-    if not current_user.matching_consent:
-        return Response({
-            'success': False,
-            'error': '매칭 동의가 OFF 상태입니다. 매칭을 확인하려면 매칭 동의를 ON으로 설정해주세요.',
-            'matching_consent_required': True
-        }, status=status.HTTP_403_FORBIDDEN)
+    denied = _deny_if_matching_consent_off(
+        current_user,
+        error_message='매칭 동의가 OFF 상태입니다. 매칭을 확인하려면 매칭 동의를 ON으로 설정해주세요.',
+    )
+    if denied:
+        return denied
     
     # 위치 가져오기 (쿼리 파라미터 우선, 없으면 저장된 위치 사용)
     latitude = request.query_params.get('latitude')
@@ -371,32 +379,13 @@ def register_notification(request):
     API 15: 백그라운드 알림 등록
     POST /api/matching/notifications/register/
     """
-    # 개발 모드에서 인증 없이 테스트하는 경우
-    if settings.DEBUG and not request.user.is_authenticated:
-        user_id = request.data.get('user_id')
-        if not user_id:
-            return Response({
-                'success': False,
-                'error': '테스트 모드: user_id가 필요합니다.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            auth_user = AuthUser.objects.get(id=user_id)
-            current_user = auth_user.profile
-        except Exception:
-            return Response({
-                'success': False,
-                'error': f'user_id {user_id}에 해당하는 프로필이 없습니다.'
-            }, status=status.HTTP_404_NOT_FOUND)
-    else:
-        # 정상 모드: 인증된 사용자
-        try:
-            current_user = request.user.profile
-        except User.DoesNotExist:
-            return Response({
-                'success': False,
-                'error': '프로필이 없습니다.'
-            }, status=status.HTTP_404_NOT_FOUND)
+    current_user, error_response = _get_current_user_profile(
+        request,
+        user_id_source='data',
+        authed_missing_profile_error='프로필이 없습니다.',
+    )
+    if error_response:
+        return error_response
     
     serializer = NotificationRegisterSerializer(data=request.data)
     if not serializer.is_valid():
@@ -438,32 +427,9 @@ def active_match_count(request):
     
     현재 위치에서 50m 이내에 있는 매칭된 사용자 수를 반환합니다.
     """
-    # 개발 모드에서 인증 없이 테스트하는 경우
-    if settings.DEBUG and not request.user.is_authenticated:
-        user_id = request.query_params.get('user_id')
-        if not user_id:
-            return Response({
-                'success': False,
-                'error': '테스트 모드: user_id가 필요합니다.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            auth_user = AuthUser.objects.get(id=user_id)
-            current_user = auth_user.profile
-        except Exception:
-            return Response({
-                'success': False,
-                'error': f'user_id {user_id}에 해당하는 프로필이 없습니다.'
-            }, status=status.HTTP_404_NOT_FOUND)
-    else:
-        # 정상 모드: 인증된 사용자
-        try:
-            current_user = request.user.profile
-        except User.DoesNotExist:
-            return Response({
-                'success': False,
-                'error': '프로필이 없습니다. 먼저 프로필을 생성해주세요.'
-            }, status=status.HTTP_404_NOT_FOUND)
+    current_user, error_response = _get_current_user_profile(request, user_id_source='query')
+    if error_response:
+        return error_response
     
     # Query Parameters
     latitude = request.query_params.get('latitude')
