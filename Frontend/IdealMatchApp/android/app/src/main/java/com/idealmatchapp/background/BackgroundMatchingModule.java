@@ -44,6 +44,13 @@ public class BackgroundMatchingModule extends ReactContextBaseJavaModule {
       if (options.hasKey("radiusKm") && !options.isNull("radiusKm")) {
         i.putExtra("radius_km", options.getDouble("radiusKm"));
       }
+      // iOS와 동일한 "동의 ON 직후 알림 윈도우" 지원용
+      if (options.hasKey("consentEnabledAtMs") && !options.isNull("consentEnabledAtMs")) {
+        i.putExtra("consent_enabled_at_ms", (long) options.getDouble("consentEnabledAtMs"));
+      }
+      if (options.hasKey("consentWindowMs") && !options.isNull("consentWindowMs")) {
+        i.putExtra("consent_window_ms", (long) options.getDouble("consentWindowMs"));
+      }
     }
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

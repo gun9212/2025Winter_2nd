@@ -7,6 +7,8 @@ const { BackgroundMatching } = NativeModules;
 export async function startAndroidForegroundMatching({
   intervalMs = 60000,
   radiusKm = 0.05,
+  consentEnabledAtMs = 0,
+  consentWindowMs = 30000,
 } = {}) {
   if (Platform.OS !== 'android') return;
   if (!BackgroundMatching?.start) return;
@@ -28,6 +30,8 @@ export async function startAndroidForegroundMatching({
     accessToken,
     intervalMs,
     radiusKm,
+    consentEnabledAtMs,
+    consentWindowMs,
   });
 }
 

@@ -598,13 +598,40 @@ const MainScreen = ({ navigation }) => {
 
       if (Platform.OS === 'android') {
         // Android는 JS 타이머 대신 Foreground Service로 백그라운드 동작 보장
+        // iOS와 동일하게: "로그인 + 매칭 동의 ON"일 때만 백그라운드 매칭이 동작해야 함
+        if (!isLoggedIn || !matchingConsent) {
+          console.log('🤖 Android: Foreground Service 시작 스킵 (로그인/매칭 동의 필요)');
+          stopAndroidForegroundMatching();
+          // 백그라운드: 절약 설정만 적용
+          locationService.applyAndroidNativeConfig('background');
+          appState.current = nextAppState;
+          return;
+        }
+
+        // Android 13+ 알림 권한은 서비스에서 요청할 수 없으므로, 시작 전에 JS에서 확보
+        try {
+          await notificationService.requestPermission();
+          await notificationService.createChannel();
+        } catch (e) {
+          console.warn('⚠️ Android: 알림 권한/채널 설정 실패(서비스는 계속 실행될 수 있음):', e);
+        }
+
         console.log('🤖 Android: Foreground Service 시작');
         // 백그라운드: 절약 설정(혹시 JS getCurrentLocation이 호출되더라도 저전력으로)
         locationService.applyAndroidNativeConfig('background');
+
+        const consentEnabledAtMs = consentEnabledAtRef.current
+          ? new Date(consentEnabledAtRef.current).getTime()
+          : 0;
+
         await startAndroidForegroundMatching({
-          // 배터리 고려 기본 1분 (필요시 조정)
-          intervalMs: 60000,
-          radiusKm: 0.05,
+          // iOS 백그라운드 setInterval(30초)과 동일하게 맞춤
+          intervalMs: DEFAULT_BACKGROUND_INTERVAL,
+          // iOS `checkMatches(..., 0.01)`(10m)와 동일하게 맞춤
+          radiusKm: 0.01,
+          // iOS와 동일한 "동의 ON 직후 알림 윈도우" 지원
+          consentEnabledAtMs,
+          consentWindowMs: 30000,
         });
       } else {
         // iOS: 백그라운드 매칭 시작

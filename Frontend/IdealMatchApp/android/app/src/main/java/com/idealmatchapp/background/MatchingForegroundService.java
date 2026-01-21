@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.location.Location;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 
@@ -26,6 +27,8 @@ import com.idealmatchapp.R;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -53,6 +56,10 @@ public class MatchingForegroundService extends Service {
   private static final String KEY_INTERVAL_MS = "interval_ms";
   private static final String KEY_RADIUS_KM = "radius_km";
   private static final String KEY_LAST_ACTIVE_COUNT = "last_active_count";
+  // iOS와 동일한 "동의 ON 직후 알림 윈도우" 상태
+  private static final String KEY_CONSENT_ENABLED_AT_MS = "consent_enabled_at_ms";
+  private static final String KEY_CONSENT_WINDOW_MS = "consent_window_ms";
+  private static final String KEY_CONSENT_NOTIFICATION_SENT = "consent_notification_sent";
 
   private static final String SERVICE_CHANNEL_ID = "matching-service";
   private static final String MATCH_CHANNEL_ID = "match-notifications";
@@ -73,7 +80,51 @@ public class MatchingForegroundService extends Service {
   private volatile long intervalMs = 60000L; // default 1 min
   private volatile double radiusKm = 0.05;  // default 50m
 
+  // 동의 ON 직후 알림 윈도우 (iOS parity)
+  private volatile long consentEnabledAtMs = 0L;
+  private volatile long consentWindowMs = 30000L;
+  private volatile boolean consentNotificationSent = false;
+
+  // 중복 알림 방지 (iOS: notifiedMatchesRef 대응)
+  private final Set<String> notifiedKeys = new HashSet<>();
+
   private volatile long lastTickMs = 0L;
+
+  private static final class MatchCheckResult {
+    final boolean hasNewMatch;
+    final JSONObject latestMatch;
+    final long matchId;
+    final long user1Id;
+    final long user2Id;
+    final double distanceM;
+    final int matchScore;
+
+    MatchCheckResult(
+        boolean hasNewMatch,
+        JSONObject latestMatch,
+        long matchId,
+        long user1Id,
+        long user2Id,
+        double distanceM,
+        int matchScore) {
+      this.hasNewMatch = hasNewMatch;
+      this.latestMatch = latestMatch;
+      this.matchId = matchId;
+      this.user1Id = user1Id;
+      this.user2Id = user2Id;
+      this.distanceM = distanceM;
+      this.matchScore = matchScore;
+    }
+  }
+
+  private static final class FatalServiceException extends Exception {
+    final int statusCode;
+
+    FatalServiceException(int statusCode, String message) {
+      super(message);
+      this.statusCode = statusCode;
+    }
+  }
 
   @Override
   public void onCreate() {
@@ -89,6 +140,12 @@ public class MatchingForegroundService extends Service {
       // Restart after process kill (START_STICKY). Restore last config.
       restoreConfigFromPrefs();
       if (isEnabledInPrefs()) {
+        // 설정이 불완전하면(토큰/URL 없음) 재시작하지 않음
+        if (baseUrl == null || baseUrl.isEmpty() || accessToken == null || accessToken.isEmpty()) {
+          setEnabledInPrefs(false);
+          stopSelf();
+          return START_NOT_STICKY;
+        }
         startForeground(SERVICE_NOTIFICATION_ID, buildServiceNotification());
         startLocationUpdates();
       }
@@ -136,11 +193,25 @@ public class MatchingForegroundService extends Service {
     String t = intent.getStringExtra(KEY_ACCESS_TOKEN);
     long i = intent.getLongExtra(KEY_INTERVAL_MS, intervalMs);
     double r = intent.getDoubleExtra(KEY_RADIUS_KM, radiusKm);
+    long consentAt = intent.getLongExtra(KEY_CONSENT_ENABLED_AT_MS, consentEnabledAtMs);
+    long consentWindow = intent.getLongExtra(KEY_CONSENT_WINDOW_MS, consentWindowMs);
+    boolean consentSent = intent.getBooleanExtra(KEY_CONSENT_NOTIFICATION_SENT, consentNotificationSent);
 
     if (b != null && !b.trim().isEmpty()) baseUrl = b.trim();
     if (t != null && !t.trim().isEmpty()) accessToken = t.trim();
     if (i > 1000L) intervalMs = i;
     if (r > 0) radiusKm = r;
+
+    consentEnabledAtMs = Math.max(0L, consentAt);
+    if (consentWindow > 0) consentWindowMs = consentWindow;
+
+    // 윈도우 시작 시점이 들어오면, iOS처럼 알림 기록/윈도우 상태를 초기화
+    if (consentEnabledAtMs > 0L) {
+      consentNotificationSent = false;
+      notifiedKeys.clear();
+    } else {
+      consentNotificationSent = consentSent;
+    }
   }
 
   private void setupLocationCallback() {
@@ -168,10 +239,8 @@ public class MatchingForegroundService extends Service {
                     if (accessToken == null || accessToken.isEmpty()) return;
 
                     postLocationUpdate(lat, lon);
-                    boolean hasNewMatch = checkMatch(lat, lon, radiusKm);
-                    if (hasNewMatch) {
-                      notifyMatch();
-                    }
+                    MatchCheckResult matchCheck = checkMatchDetailed(lat, lon, radiusKm);
+                    maybeNotifyMatchFromCheck(matchCheck);
 
                     // ✅ count 증가 알림도 Foreground Service에서 처리(백그라운드에서도 동작)
                     // - JS가 백그라운드에서 멈추는 경우에도 count 증가 알림이 뜨도록 보조 채널로 추가
@@ -179,6 +248,9 @@ public class MatchingForegroundService extends Service {
                     if (activeCount >= 0) {
                       maybeNotifyCountIncrease(activeCount);
                     }
+                  } catch (FatalServiceException fatal) {
+                    // 토큰 만료/동의 OFF/이메일 미인증 등: iOS와 동일하게 백그라운드 매칭을 중지
+                    shutdownService();
                   } catch (Exception e) {
                     // do not crash service
                     e.printStackTrace();
@@ -227,13 +299,16 @@ public class MatchingForegroundService extends Service {
 
     try (Response response = http.newCall(request).execute()) {
       if (!response.isSuccessful()) {
-        // ignore, server might reject when consent is off, etc.
-        return;
+        int code = response.code();
+        if (code == 401 || code == 403) {
+          throw new FatalServiceException(code, "location update rejected");
+        }
+        return; // other errors are ignored
       }
     }
   }
 
-  private boolean checkMatch(double lat, double lon, double radiusKm) throws Exception {
+  private MatchCheckResult checkMatchDetailed(double lat, double lon, double radiusKm) throws Exception {
     String url =
         baseUrl
             + "/matching/check/?latitude="
@@ -252,13 +327,42 @@ public class MatchingForegroundService extends Service {
             .build();
 
     try (Response response = http.newCall(request).execute()) {
-      if (!response.isSuccessful()) return false;
+      if (!response.isSuccessful()) {
+        int code = response.code();
+        if (code == 401 || code == 403) {
+          throw new FatalServiceException(code, "match check rejected");
+        }
+        return new MatchCheckResult(false, null, -1L, 0L, 0L, 0d, 0);
+      }
       String body = response.body() != null ? response.body().string() : null;
-      if (body == null || body.isEmpty()) return false;
+      if (body == null || body.isEmpty()) return new MatchCheckResult(false, null, -1L, 0L, 0L, 0d, 0);
       JSONObject json = new JSONObject(body);
-      return json.optBoolean("has_new_match", false);
+      boolean hasNew = json.optBoolean("has_new_match", false);
+      JSONObject latest = json.optJSONObject("latest_match");
+
+      long matchId = -1L;
+      long user1Id = 0L;
+      long user2Id = 0L;
+      double distanceM = 0d;
+      int matchScore = 0;
+
+      if (latest != null) {
+        matchId = latest.optLong("id", -1L);
+        JSONObject u1 = latest.optJSONObject("user1");
+        JSONObject u2 = latest.optJSONObject("user2");
+        if (u1 != null) user1Id = u1.optLong("id", 0L);
+        if (u2 != null) user2Id = u2.optLong("id", 0L);
+
+        JSONObject criteria = latest.optJSONObject("matched_criteria");
+        if (criteria != null) {
+          distanceM = criteria.optDouble("distance_m", 0d);
+          matchScore = criteria.optInt("match_score", 0);
+        }
+      }
+
+      return new MatchCheckResult(hasNew, latest, matchId, user1Id, user2Id, distanceM, matchScore);
     } catch (IOException ioe) {
-      return false;
+      return new MatchCheckResult(false, null, -1L, 0L, 0L, 0d, 0);
     }
   }
 
@@ -281,7 +385,13 @@ public class MatchingForegroundService extends Service {
             .build();
 
     try (Response response = http.newCall(request).execute()) {
-      if (!response.isSuccessful()) return -1;
+      if (!response.isSuccessful()) {
+        int code = response.code();
+        if (code == 401 || code == 403) {
+          throw new FatalServiceException(code, "active-count rejected");
+        }
+        return -1;
+      }
       String body = response.body() != null ? response.body().string() : null;
       if (body == null || body.isEmpty()) return -1;
       JSONObject json = new JSONObject(body);
@@ -290,6 +400,107 @@ public class MatchingForegroundService extends Service {
     } catch (IOException ioe) {
       return -1;
     }
+  }
+
+  /**
+   * iOS(JS)의 알림 조건을 Android 서비스에서도 동일하게 적용
+   * - latest_match가 있고,
+   *   (1) has_new_match=true 이거나
+   *   (2) 동의 ON 직후(consentWindowMs)이며 아직 동의-윈도우 알림을 보내지 않았을 때 -> 1회 알림 허용
+   * - 중복 알림 방지: isNewMatch=false일 때만 matchId/userPairId 기반으로 1회로 제한
+   */
+  private void maybeNotifyMatchFromCheck(MatchCheckResult check) {
+    if (check == null || check.latestMatch == null) return;
+
+    long now = System.currentTimeMillis();
+    boolean withinConsentWindow =
+        consentEnabledAtMs > 0L && (now - consentEnabledAtMs) >= 0L && (now - consentEnabledAtMs) < consentWindowMs;
+
+    boolean shouldShow = check.hasNewMatch || (withinConsentWindow && !consentNotificationSent);
+    if (!shouldShow) return;
+
+    String matchKey = buildMatchKey(check.matchId, check.user1Id, check.user2Id);
+    String pairKey = buildUserPairKey(check.user1Id, check.user2Id);
+
+    boolean isTrulyNewMatch = check.hasNewMatch;
+    if (!isTrulyNewMatch) {
+      if (isAlreadyNotified(matchKey, pairKey)) {
+        if (withinConsentWindow) {
+          clearConsentWindow();
+        }
+        return;
+      }
+    }
+
+    notifyMatchSafe();
+    markNotified(matchKey, pairKey);
+
+    if (withinConsentWindow) {
+      clearConsentWindow();
+    }
+  }
+
+  private boolean isAlreadyNotified(String matchKey, String pairKey) {
+    if (matchKey != null && notifiedKeys.contains(matchKey)) return true;
+    return pairKey != null && notifiedKeys.contains(pairKey);
+  }
+
+  private void markNotified(String matchKey, String pairKey) {
+    if (matchKey != null) notifiedKeys.add(matchKey);
+    if (pairKey != null) notifiedKeys.add(pairKey);
+  }
+
+  private void clearConsentWindow() {
+    consentEnabledAtMs = 0L;
+    consentNotificationSent = true;
+    prefs()
+        .edit()
+        .putLong(KEY_CONSENT_ENABLED_AT_MS, consentEnabledAtMs)
+        .putLong(KEY_CONSENT_WINDOW_MS, consentWindowMs)
+        .putBoolean(KEY_CONSENT_NOTIFICATION_SENT, consentNotificationSent)
+        .apply();
+  }
+
+  private String buildMatchKey(long matchId, long user1Id, long user2Id) {
+    if (matchId > 0) return "m:" + matchId;
+    return buildUserPairKey(user1Id, user2Id);
+  }
+
+  private String buildUserPairKey(long user1Id, long user2Id) {
+    if (user1Id <= 0 || user2Id <= 0) return null;
+    long a = Math.min(user1Id, user2Id);
+    long b = Math.max(user1Id, user2Id);
+    return "p:" + a + "_" + b;
+  }
+
+  private void notifyMatchSafe() {
+    try {
+      notifyMatch();
+    } catch (SecurityException se) {
+      // Android 13+ POST_NOTIFICATIONS 미허용 등: 알림을 못 띄우면 무시
+    } catch (Exception ignored) {
+    }
+  }
+
+  private void shutdownService() {
+    try {
+      setEnabledInPrefs(false);
+    } catch (Exception ignored) {
+    }
+    try {
+      stopLocationUpdates();
+    } catch (Exception ignored) {
+    }
+
+    new Handler(Looper.getMainLooper())
+        .post(
+            () -> {
+              try {
+                stopForeground(true);
+              } catch (Exception ignored) {
+              }
+              stopSelf();
+            });
   }
 
   private void maybeNotifyCountIncrease(int newCount) {
@@ -382,6 +593,9 @@ public class MatchingForegroundService extends Service {
         .putString(KEY_ACCESS_TOKEN, accessToken)
         .putLong(KEY_INTERVAL_MS, intervalMs)
         .putString(KEY_RADIUS_KM, String.valueOf(radiusKm))
+        .putLong(KEY_CONSENT_ENABLED_AT_MS, consentEnabledAtMs)
+        .putLong(KEY_CONSENT_WINDOW_MS, consentWindowMs)
+        .putBoolean(KEY_CONSENT_NOTIFICATION_SENT, consentNotificationSent)
         .apply();
   }
 
@@ -390,6 +604,9 @@ public class MatchingForegroundService extends Service {
     baseUrl = p.getString(KEY_BASE_URL, baseUrl);
     accessToken = p.getString(KEY_ACCESS_TOKEN, accessToken);
     intervalMs = p.getLong(KEY_INTERVAL_MS, intervalMs);
+    consentEnabledAtMs = p.getLong(KEY_CONSENT_ENABLED_AT_MS, consentEnabledAtMs);
+    consentWindowMs = p.getLong(KEY_CONSENT_WINDOW_MS, consentWindowMs);
+    consentNotificationSent = p.getBoolean(KEY_CONSENT_NOTIFICATION_SENT, consentNotificationSent);
     try {
       radiusKm = Double.parseDouble(p.getString(KEY_RADIUS_KM, String.valueOf(radiusKm)));
     } catch (Exception ignored) {
