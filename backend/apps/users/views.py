@@ -1064,15 +1064,30 @@ def ideal_type_view(request):
                     serializer = IdealTypeProfileSerializer(data=request.data)
             
             if serializer.is_valid():
+                # 디버깅: 우선순위 데이터 확인
+                print(f'📝 이상형 프로필 저장 요청 데이터:')
+                print(f'   priority_1: {request.data.get("priority_1")}')
+                print(f'   priority_2: {request.data.get("priority_2")}')
+                print(f'   priority_3: {request.data.get("priority_3")}')
+                print(f'   validated_data priority_1: {serializer.validated_data.get("priority_1")}')
+                print(f'   validated_data priority_2: {serializer.validated_data.get("priority_2")}')
+                print(f'   validated_data priority_3: {serializer.validated_data.get("priority_3")}')
+                
                 # 개발 모드에서 user_id가 있는 경우
                 if settings.DEBUG and not request.user.is_authenticated and request.data.get('user_id'):
                     user_id = request.data.get('user_id')
                     auth_user = AuthUser.objects.get(id=user_id)
                     user_profile = auth_user.profile
-                    serializer.save(user=user_profile)
+                    saved_ideal_type = serializer.save(user=user_profile)
                 else:
                     user_profile = request.user.profile
-                    serializer.save(user=user_profile)
+                    saved_ideal_type = serializer.save(user=user_profile)
+                
+                # 저장 후 우선순위 데이터 확인
+                print(f'✅ 저장된 이상형 프로필 우선순위:')
+                print(f'   priority_1: {saved_ideal_type.priority_1}')
+                print(f'   priority_2: {saved_ideal_type.priority_2}')
+                print(f'   priority_3: {saved_ideal_type.priority_3}')
                 
                 # 이상형 프로필 저장 후 프로필 완성도 확인하여 service_active 및 matching_consent 설정
                 if user_profile.user.email_verified:

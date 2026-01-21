@@ -117,7 +117,7 @@ def check_match_criteria(ideal_type, candidate_user, user_gender):
     # 사용자가 설정한 중요 항목 순위에 따라 가중치 동적 계산
     # ==========================================
     
-    # 순위에 따른 가중치 설정
+    # 순위에 따른 가중치 설정 (총합 100점)
     # 1순위: 가장 높은 가중치, 2순위: 중간, 3순위: 낮은 가중치
     PRIORITY_WEIGHTS = {
         1: 50.0,  # 1순위: 50점
@@ -125,12 +125,8 @@ def check_match_criteria(ideal_type, candidate_user, user_gender):
         3: 20.0,  # 3순위: 20점
     }
     
-    # 기본 가중치 (순위가 설정되지 않은 경우)
-    DEFAULT_WEIGHTS = {
-        'mbti': 30.0,           # MBTI 일치 시 30점
-        'personality_per_item': 20.0,  # 성격 일치 개수당 20점
-        'interest_per_item': 15.0,     # 관심사 일치 개수당 15점
-    }
+    # 기본 가중치 (순위가 설정되지 않은 경우) - 사용하지 않음 (순위 필수)
+    # 순위가 설정되지 않은 항목은 점수에 포함하지 않음
     
     # 사용자가 설정한 순위에 따라 가중치 계산
     def get_weight_for_item(item_type, ideal_type):
@@ -139,7 +135,7 @@ def check_match_criteria(ideal_type, candidate_user, user_gender):
         - priority_1에 설정된 항목: 50점 (1순위)
         - priority_2에 설정된 항목: 30점 (2순위)
         - priority_3에 설정된 항목: 20점 (3순위)
-        - 순위가 설정되지 않은 항목: 기본 가중치 사용
+        - 순위가 설정되지 않은 항목: 0점 (점수에 포함하지 않음)
         """
         # 1순위 확인
         if ideal_type.priority_1 == item_type:
@@ -151,88 +147,162 @@ def check_match_criteria(ideal_type, candidate_user, user_gender):
         elif ideal_type.priority_3 == item_type:
             return PRIORITY_WEIGHTS[3]  # 20점
         else:
-            # 순위가 설정되지 않은 경우 기본 가중치 사용
-            if item_type == 'mbti':
-                return DEFAULT_WEIGHTS['mbti']  # 30점
-            elif item_type == 'personality':
-                return DEFAULT_WEIGHTS['personality_per_item']  # 개당 20점
-            elif item_type == 'interests':
-                return DEFAULT_WEIGHTS['interest_per_item']  # 개당 15점
-        return 0.0
+            # 순위가 설정되지 않은 경우 0점 (점수에 포함하지 않음)
+            return 0.0
+    
+    def calculate_f1_score(ideal_list, candidate_list):
+        """
+        F1 Score 계산 (Precision과 Recall의 조화평균)
+        
+        Args:
+            ideal_list: 이상형으로 선택한 항목 리스트
+            candidate_list: 후보자가 선택한 항목 리스트
+        
+        Returns:
+            float: F1 Score (0.0 ~ 1.0)
+        """
+        if not ideal_list or not candidate_list:
+            return 0.0
+        
+        ideal_set = set(ideal_list)
+        candidate_set = set(candidate_list)
+        
+        # 일치하는 항목 개수 (TP)
+        matches = len(ideal_set & candidate_set)
+        
+        if matches == 0:
+            return 0.0
+        
+        # Precision: 일치하는 개수 / 내가 선택한 개수
+        precision = matches / len(ideal_set) if len(ideal_set) > 0 else 0.0
+        
+        # Recall: 일치하는 개수 / 상대방이 선택한 개수
+        recall = matches / len(candidate_set) if len(candidate_set) > 0 else 0.0
+        
+        # F1 Score: Precision과 Recall의 조화평균
+        if precision + recall == 0:
+            return 0.0
+        
+        f1_score = 2 * (precision * recall) / (precision + recall)
+        
+        return f1_score
     
     score = 0.0
     score_details = {}
     
-    # 2-1. MBTI 가중치 점수
-    if ideal_type.preferred_mbti and len(ideal_type.preferred_mbti) > 0:
-        if candidate_user.mbti and candidate_user.mbti in ideal_type.preferred_mbti:
-            mbti_weight = get_weight_for_item('mbti', ideal_type)
-            score += mbti_weight
-            matched_criteria['mbti'] = True
-            score_details['mbti'] = mbti_weight
-            print(f'      ✅ MBTI 일치 ({candidate_user.mbti}): +{mbti_weight}점 (순위: {ideal_type.priority_1 if ideal_type.priority_1 == "mbti" else ideal_type.priority_2 if ideal_type.priority_2 == "mbti" else ideal_type.priority_3 if ideal_type.priority_3 == "mbti" else "미설정"})')
+    # 2-1. MBTI 점수 (0 또는 1 × 가중치)
+    mbti_weight = get_weight_for_item('mbti', ideal_type)
+    if mbti_weight > 0:  # 우선순위에 MBTI가 설정된 경우만 계산
+        if ideal_type.preferred_mbti and len(ideal_type.preferred_mbti) > 0:
+            if candidate_user.mbti and candidate_user.mbti in ideal_type.preferred_mbti:
+                # MBTI 일치: 1 × 가중치
+                mbti_score = 1.0 * mbti_weight
+                score += mbti_score
+                matched_criteria['mbti'] = True
+                score_details['mbti'] = {
+                    'match': True,
+                    'score': mbti_score,
+                    'weight': mbti_weight
+                }
+                priority = '1순위' if ideal_type.priority_1 == 'mbti' else '2순위' if ideal_type.priority_2 == 'mbti' else '3순위'
+                print(f'      ✅ MBTI 일치 ({candidate_user.mbti}): {mbti_score:.1f}점 (순위: {priority}, 가중치: {mbti_weight}점)')
+            else:
+                # MBTI 불일치: 0 × 가중치 = 0점
+                matched_criteria['mbti'] = False
+                score_details['mbti'] = {
+                    'match': False,
+                    'score': 0.0,
+                    'weight': mbti_weight
+                }
+                print(f'      ❌ MBTI 불일치 (선호: {ideal_type.preferred_mbti}, 후보: {candidate_user.mbti}): 0점')
         else:
-            matched_criteria['mbti'] = False
-            score_details['mbti'] = 0.0
-            print(f'      ❌ MBTI 불일치 (선호: {ideal_type.preferred_mbti}, 후보: {candidate_user.mbti}): +0점')
-    else:
-        matched_criteria['mbti'] = None
-        score_details['mbti'] = None
-        print(f'      ⚠️ MBTI 미설정: 점수 없음')
+            matched_criteria['mbti'] = None
+            score_details['mbti'] = None
+            print(f'      ⚠️ MBTI 미설정: 점수 없음')
     
-    # 2-2. 성격 가중치 점수
-    if ideal_type.preferred_personality and len(ideal_type.preferred_personality) > 0:
-        if candidate_user.personality and isinstance(candidate_user.personality, list):
-            # 일치하는 성격 개수 계산
-            personality_matches = len(set(ideal_type.preferred_personality) & set(candidate_user.personality))
-            personality_weight = get_weight_for_item('personality', ideal_type)
-            personality_score = personality_matches * personality_weight
-            score += personality_score
-            matched_criteria['personality'] = personality_matches
-            score_details['personality'] = {
-                'matches': personality_matches,
-                'total_preferred': len(ideal_type.preferred_personality),
-                'score': personality_score,
-                'weight_per_item': personality_weight
-            }
-            priority = ideal_type.priority_1 if ideal_type.priority_1 == 'personality' else ideal_type.priority_2 if ideal_type.priority_2 == 'personality' else ideal_type.priority_3 if ideal_type.priority_3 == 'personality' else '미설정'
-            print(f'      ✅ 성격 일치 ({personality_matches}/{len(ideal_type.preferred_personality)}): +{personality_score}점 (순위: {priority}, 개당 {personality_weight}점)')
+    # 2-2. 성격 점수 (F1 Score × 가중치)
+    personality_weight = get_weight_for_item('personality', ideal_type)
+    if personality_weight > 0:  # 우선순위에 성격이 설정된 경우만 계산
+        if ideal_type.preferred_personality and len(ideal_type.preferred_personality) > 0:
+            if candidate_user.personality and isinstance(candidate_user.personality, list):
+                # F1 Score 계산
+                f1_score = calculate_f1_score(
+                    ideal_type.preferred_personality,
+                    candidate_user.personality
+                )
+                personality_score = f1_score * personality_weight
+                score += personality_score
+                
+                matches = len(set(ideal_type.preferred_personality) & set(candidate_user.personality))
+                matched_criteria['personality'] = matches
+                score_details['personality'] = {
+                    'matches': matches,
+                    'total_preferred': len(ideal_type.preferred_personality),
+                    'total_candidate': len(candidate_user.personality),
+                    'f1_score': f1_score,
+                    'score': personality_score,
+                    'weight': personality_weight
+                }
+                priority = '1순위' if ideal_type.priority_1 == 'personality' else '2순위' if ideal_type.priority_2 == 'personality' else '3순위'
+                print(f'      ✅ 성격 F1 Score: {f1_score:.3f} (일치: {matches}/{len(ideal_type.preferred_personality)} vs {len(candidate_user.personality)}): {personality_score:.1f}점 (순위: {priority}, 가중치: {personality_weight}점)')
+            else:
+                matched_criteria['personality'] = 0
+                score_details['personality'] = {
+                    'matches': 0,
+                    'total_preferred': len(ideal_type.preferred_personality),
+                    'total_candidate': 0,
+                    'f1_score': 0.0,
+                    'score': 0.0,
+                    'weight': personality_weight
+                }
+                print(f'      ❌ 성격 정보 없음: 0점')
         else:
-            matched_criteria['personality'] = 0
-            score_details['personality'] = {'matches': 0, 'total_preferred': len(ideal_type.preferred_personality), 'score': 0.0}
-            print(f'      ❌ 성격 정보 없음: +0점')
-    else:
-        matched_criteria['personality'] = None
-        score_details['personality'] = None
-        print(f'      ⚠️ 성격 미설정: 점수 없음')
+            matched_criteria['personality'] = None
+            score_details['personality'] = None
+            print(f'      ⚠️ 성격 미설정: 점수 없음')
     
-    # 2-3. 관심사 가중치 점수
-    if ideal_type.preferred_interests and len(ideal_type.preferred_interests) > 0:
-        if candidate_user.interests and isinstance(candidate_user.interests, list):
-            # 일치하는 관심사 개수 계산
-            interest_matches = len(set(ideal_type.preferred_interests) & set(candidate_user.interests))
-            interest_weight = get_weight_for_item('interests', ideal_type)
-            interest_score = interest_matches * interest_weight
-            score += interest_score
-            matched_criteria['interests'] = interest_matches
-            score_details['interests'] = {
-                'matches': interest_matches,
-                'total_preferred': len(ideal_type.preferred_interests),
-                'score': interest_score,
-                'weight_per_item': interest_weight
-            }
-            priority = ideal_type.priority_1 if ideal_type.priority_1 == 'interests' else ideal_type.priority_2 if ideal_type.priority_2 == 'interests' else ideal_type.priority_3 if ideal_type.priority_3 == 'interests' else '미설정'
-            print(f'      ✅ 관심사 일치 ({interest_matches}/{len(ideal_type.preferred_interests)}): +{interest_score}점 (순위: {priority}, 개당 {interest_weight}점)')
+    # 2-3. 관심사 점수 (F1 Score × 가중치)
+    interest_weight = get_weight_for_item('interests', ideal_type)
+    if interest_weight > 0:  # 우선순위에 관심사가 설정된 경우만 계산
+        if ideal_type.preferred_interests and len(ideal_type.preferred_interests) > 0:
+            if candidate_user.interests and isinstance(candidate_user.interests, list):
+                # F1 Score 계산
+                f1_score = calculate_f1_score(
+                    ideal_type.preferred_interests,
+                    candidate_user.interests
+                )
+                interest_score = f1_score * interest_weight
+                score += interest_score
+                
+                matches = len(set(ideal_type.preferred_interests) & set(candidate_user.interests))
+                matched_criteria['interests'] = matches
+                score_details['interests'] = {
+                    'matches': matches,
+                    'total_preferred': len(ideal_type.preferred_interests),
+                    'total_candidate': len(candidate_user.interests),
+                    'f1_score': f1_score,
+                    'score': interest_score,
+                    'weight': interest_weight
+                }
+                priority = '1순위' if ideal_type.priority_1 == 'interests' else '2순위' if ideal_type.priority_2 == 'interests' else '3순위'
+                print(f'      ✅ 관심사 F1 Score: {f1_score:.3f} (일치: {matches}/{len(ideal_type.preferred_interests)} vs {len(candidate_user.interests)}): {interest_score:.1f}점 (순위: {priority}, 가중치: {interest_weight}점)')
+            else:
+                matched_criteria['interests'] = 0
+                score_details['interests'] = {
+                    'matches': 0,
+                    'total_preferred': len(ideal_type.preferred_interests),
+                    'total_candidate': 0,
+                    'f1_score': 0.0,
+                    'score': 0.0,
+                    'weight': interest_weight
+                }
+                print(f'      ❌ 관심사 정보 없음: 0점')
         else:
-            matched_criteria['interests'] = 0
-            score_details['interests'] = {'matches': 0, 'total_preferred': len(ideal_type.preferred_interests), 'score': 0.0}
-            print(f'      ❌ 관심사 정보 없음: +0점')
-    else:
-        matched_criteria['interests'] = None
-        score_details['interests'] = None
-        print(f'      ⚠️ 관심사 미설정: 점수 없음')
+            matched_criteria['interests'] = None
+            score_details['interests'] = None
+            print(f'      ⚠️ 관심사 미설정: 점수 없음')
     
-    # 최종 점수는 0-100 범위로 제한
+    # 최종 점수 (0-100 범위, 가중치 합이 100이므로 자동으로 100 이하)
     final_score = min(score, 100.0)
     
     print(f'      📊 최종 매칭 점수: {final_score:.1f}점 (상세: {score_details})')

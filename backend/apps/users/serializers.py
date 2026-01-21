@@ -127,6 +127,28 @@ class IdealTypeProfileSerializer(serializers.ModelSerializer):
                     'preferred_gender': '선호 성별은 M(남성), F(여성), A(모두) 중 하나여야 합니다.'
                 })
         
+        # 우선순위 중복 검증
+        priority_1 = data.get('priority_1')
+        priority_2 = data.get('priority_2')
+        priority_3 = data.get('priority_3')
+        
+        # 빈 문자열을 None으로 변환
+        if priority_1 == '':
+            data['priority_1'] = None
+            priority_1 = None
+        if priority_2 == '':
+            data['priority_2'] = None
+            priority_2 = None
+        if priority_3 == '':
+            data['priority_3'] = None
+            priority_3 = None
+        
+        priorities = [p for p in [priority_1, priority_2, priority_3] if p is not None]
+        if len(priorities) > 0 and len(priorities) != len(set(priorities)):
+            raise serializers.ValidationError({
+                'priority': '우선순위는 서로 다른 항목으로 설정해야 합니다.'
+            })
+        
         return data
 
 
