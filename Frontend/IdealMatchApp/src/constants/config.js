@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 // ✅ EC2 백엔드 (Nginx 80 프록시)
 // - 개발(실기기)에서도 EC2를 쓰고 싶으면 USE_EC2_API_IN_DEV=true
 // - 기본 API 경로는 /api 입니다.
-const EC2_API_BASE_URL = 'http://ec2-54-180-153-89.ap-northeast-2.compute.amazonaws.com/api';
+const EC2_API_BASE_URL = 'http://ec2-3-34-124-186.ap-northeast-2.compute.amazonaws.com/api';
 const USE_EC2_API_IN_DEV = true;
 
 const USE_SIMULATOR = false; // 실제 기기 테스트 시 false로 설정
