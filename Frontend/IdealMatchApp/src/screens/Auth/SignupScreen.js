@@ -117,12 +117,7 @@ const SignupScreen = ({ navigation, onSignup, route }) => {
       setCodeSent(true);
       setTimer(result.expires_in || 120); // 2분(120초) 타이머 초기화 및 시작
       
-      // 개발 환경에서만 인증번호 표시
-      const devMessage = result.verification_code 
-        ? `\n개발 모드 인증번호: ${result.verification_code}`
-        : '';
-      
-      Alert.alert('인증번호 전송', `${email}로 인증번호가 전송되었습니다.${devMessage}`);
+      Alert.alert('인증번호 전송', `${email}로 인증번호가 전송되었습니다.`);
     } catch (error) {
       // 이미 등록된 이메일인 경우 특별 처리
       if (error.message && error.message.includes('이미 등록된 이메일')) {

@@ -97,11 +97,7 @@ const PasswordResetScreen = ({ navigation, onVerifyUser, onResetPassword }) => {
       setCodeSent(true);
       setTimer(120); // 2분(120초) 타이머 초기화 및 시작
       
-      const message = __DEV__ && result.verification_code
-        ? `${email}로 인증번호가 전송되었습니다.\n테스트 코드: ${result.verification_code}`
-        : `${email}로 인증번호가 전송되었습니다.`;
-      
-      Alert.alert('인증번호 전송', message);
+      Alert.alert('인증번호 전송', `${email}로 인증번호가 전송되었습니다.`);
     } catch (error) {
       Alert.alert('오류', error.message || '인증번호 전송에 실패했습니다.');
     } finally {

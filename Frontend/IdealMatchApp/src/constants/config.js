@@ -4,13 +4,13 @@ import { Platform } from 'react-native';
 // - 개발(실기기)에서도 EC2를 쓰고 싶으면 USE_EC2_API_IN_DEV=true
 // - 기본 API 경로는 /api 입니다.
 const EC2_API_BASE_URL = 'http://ec2-3-34-124-186.ap-northeast-2.compute.amazonaws.com/api';
-const USE_EC2_API_IN_DEV = true;
+const USE_EC2_API_IN_DEV = false;
 
 const USE_SIMULATOR = false; // 실제 기기 테스트 시 false로 설정
 
 // Mac의 로컬 IP 주소 (실제 기기 테스트 시 사용)
 // 로컬 IP 확인: ifconfig | grep "inet " | grep -v 127.0.0.1
-const LOCAL_IP = '10.249.110.39';
+const LOCAL_IP = '10.249.42.16'; //'10.249.110.39';
 
 export const CONFIG = {
   MATCH_RADIUS: 50, // 50m
