@@ -56,6 +56,8 @@ const MainScreen = ({ navigation }) => {
   const backgroundWatchIdRef = useRef(null);
   // 이전 매칭 가능 인원 수 추적 (count 증가 알림용)
   const previousMatchableCountRef = useRef(0);
+  // 첫 successful fetch 이후부터만 증가 알림을 보내기 위한 플래그
+  const hasFetchedMatchableCountRef = useRef(false);
   // 마지막으로 서버에 전송한 위치 추적 (중복 전송 방지용)
   const lastSentLocationRef = useRef({ latitude: null, longitude: null, timestamp: null });
   // 매칭 체크 실행 중 플래그 (동시 실행 방지)
@@ -661,7 +663,6 @@ const MainScreen = ({ navigation }) => {
   const fetchActiveMatches = async (searchLocation) => {
     if (!matchingConsent || !searchLocation) {
       setMatchableCount(0);
-      previousMatchableCountRef.current = 0;
       return;
     }
 
@@ -677,34 +678,36 @@ const MainScreen = ({ navigation }) => {
         const newCount = result.count || 0;
         const previousCount = previousMatchableCountRef.current;
         
-        // count가 증가했는지 확인 (이전 count가 0보다 크고, 새 count가 이전보다 큰 경우)
-        if (newCount > previousCount && previousCount > 0) {
+        // 첫 successful fetch는 기준값만 설정하고 알림은 보내지 않음 (초기 진입 스팸 방지)
+        if (!hasFetchedMatchableCountRef.current) {
+          hasFetchedMatchableCountRef.current = true;
+          previousMatchableCountRef.current = newCount;
+          setMatchableCount(newCount);
+          console.log(`📊 활성 매칭 수(초기 기준): ${newCount}명 (10m 이내)`);
+          return;
+        }
+
+        // count가 증가했는지 확인 (0 → N 증가도 알림 대상)
+        if (newCount > previousCount) {
           console.log(`📈 매칭 가능 인원 증가: ${previousCount}명 → ${newCount}명`);
-          
-          // 알림 표시
           try {
-            await notificationService.showCountIncreaseNotification(
-              previousCount,
-              newCount
-            );
+            await notificationService.showCountIncreaseNotification(previousCount, newCount);
             console.log('✅ 매칭 count 증가 알림 표시 완료');
           } catch (error) {
             console.error('❌ 알림 표시 실패:', error);
           }
         }
-        
+
         setMatchableCount(newCount);
         previousMatchableCountRef.current = newCount;
         console.log(`📊 활성 매칭 수: ${newCount}명 (10m 이내)`);
       } else {
-        setMatchableCount(0);
-        previousMatchableCountRef.current = 0;
-        console.log('⚠️ 활성 매칭 수 조회 실패, 0으로 설정');
+        // 실패 시에는 기존 값을 유지 (0으로 리셋하면 이후 증가 알림이 영원히 안 뜰 수 있음)
+        console.log('⚠️ 활성 매칭 수 조회 실패, 이전 값 유지');
       }
     } catch (error) {
       console.error('❌ 활성 매칭 수 조회 오류:', error);
-      setMatchableCount(0);
-      previousMatchableCountRef.current = 0;
+      // 오류 시에도 기존 값 유지
     }
   };
 

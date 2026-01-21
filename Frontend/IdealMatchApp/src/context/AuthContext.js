@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect } from 'react';
 import { StorageService } from '../services/storage';
 import { dataMigration } from '../services/migration';
 import { apiClient } from '../services/api/apiClient';
+import { notificationService } from '../services/notification';
 
 export const AuthContext = createContext();
 
@@ -132,6 +133,15 @@ export const AuthProvider = ({ children }) => {
       await StorageService.saveCurrentUser(userData);
       setCurrentUser(userData);
       setIsLoggedIn(true);
+
+      // ✅ 알림 권한/채널 선요청 (특히 Android 13+에서 Foreground Service 알림이 막히는 문제 방지)
+      // - 권한 프롬프트는 포그라운드에서만 뜨는 게 안정적이라 로그인 직후 수행
+      try {
+        await notificationService.requestPermission();
+        await notificationService.createChannel();
+      } catch (e) {
+        console.warn('⚠️ 로그인 직후 알림 권한/채널 설정 실패:', e?.message || e);
+      }
       
       // 자동 마이그레이션 시도
       const migrationResult = await dataMigration.autoMigrate(userId);

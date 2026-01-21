@@ -52,11 +52,13 @@ public class MatchingForegroundService extends Service {
   private static final String KEY_ACCESS_TOKEN = "access_token";
   private static final String KEY_INTERVAL_MS = "interval_ms";
   private static final String KEY_RADIUS_KM = "radius_km";
+  private static final String KEY_LAST_ACTIVE_COUNT = "last_active_count";
 
   private static final String SERVICE_CHANNEL_ID = "matching-service";
   private static final String MATCH_CHANNEL_ID = "match-notifications";
   private static final int SERVICE_NOTIFICATION_ID = 2001;
   private static final int MATCH_NOTIFICATION_ID = 2002;
+  private static final int COUNT_NOTIFICATION_ID = 2003;
 
   private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
@@ -170,6 +172,13 @@ public class MatchingForegroundService extends Service {
                     if (hasNewMatch) {
                       notifyMatch();
                     }
+
+                    // ✅ count 증가 알림도 Foreground Service에서 처리(백그라운드에서도 동작)
+                    // - JS가 백그라운드에서 멈추는 경우에도 count 증가 알림이 뜨도록 보조 채널로 추가
+                    int activeCount = fetchActiveMatchCount(lat, lon, 0.01 /* 10m */);
+                    if (activeCount >= 0) {
+                      maybeNotifyCountIncrease(activeCount);
+                    }
                   } catch (Exception e) {
                     // do not crash service
                     e.printStackTrace();
@@ -253,6 +262,73 @@ public class MatchingForegroundService extends Service {
     }
   }
 
+  private int fetchActiveMatchCount(double lat, double lon, double maxDistanceKm) throws Exception {
+    String url =
+        baseUrl
+            + "/matching/active-count/?latitude="
+            + round6(lat)
+            + "&longitude="
+            + round6(lon)
+            + "&max_distance="
+            + maxDistanceKm;
+
+    Request request =
+        new Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer " + accessToken)
+            .addHeader("X-App-State", "background")
+            .get()
+            .build();
+
+    try (Response response = http.newCall(request).execute()) {
+      if (!response.isSuccessful()) return -1;
+      String body = response.body() != null ? response.body().string() : null;
+      if (body == null || body.isEmpty()) return -1;
+      JSONObject json = new JSONObject(body);
+      JSONObject data = json.has("data") && json.get("data") instanceof JSONObject ? json.getJSONObject("data") : json;
+      return data.optInt("count", 0);
+    } catch (IOException ioe) {
+      return -1;
+    }
+  }
+
+  private void maybeNotifyCountIncrease(int newCount) {
+    try {
+      SharedPreferences p = prefs();
+      int prev = p.getInt(KEY_LAST_ACTIVE_COUNT, -1);
+
+      // 첫 관측은 기준값만 저장 (초기 스팸 방지)
+      if (prev < 0) {
+        p.edit().putInt(KEY_LAST_ACTIVE_COUNT, newCount).apply();
+        return;
+      }
+
+      if (newCount > prev) {
+        p.edit().putInt(KEY_LAST_ACTIVE_COUNT, newCount).apply();
+        notifyCountIncrease(prev, newCount);
+      } else if (newCount != prev) {
+        p.edit().putInt(KEY_LAST_ACTIVE_COUNT, newCount).apply();
+      }
+    } catch (Exception ignored) {
+    }
+  }
+
+  private void notifyCountIncrease(int previousCount, int newCount) {
+    NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+    if (nm == null) return;
+
+    Notification n =
+        new NotificationCompat.Builder(this, MATCH_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("📈 매칭 가능 인원 증가!")
+            .setContentText("주변에 매칭 가능한 인원이 " + previousCount + "명에서 " + newCount + "명으로 증가했습니다!")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build();
+
+    nm.notify(COUNT_NOTIFICATION_ID, n);
+  }
+
   private void notifyMatch() {
     NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
     if (nm == null) return;
@@ -291,6 +367,7 @@ public class MatchingForegroundService extends Service {
     // Match notification channel should match Notifee's channel id used in JS.
     NotificationChannel match =
         new NotificationChannel(MATCH_CHANNEL_ID, "매칭 알림", NotificationManager.IMPORTANCE_HIGH);
+    match.enableVibration(true);
     nm.createNotificationChannel(match);
   }
 
