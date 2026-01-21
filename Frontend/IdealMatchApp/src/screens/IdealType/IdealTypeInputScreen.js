@@ -28,6 +28,9 @@ const IdealTypeInputScreen = ({ navigation }) => {
   const [preferredMBTIs, setPreferredMBTIs] = useState([]);
   const [personalities, setPersonalities] = useState([]);
   const [interests, setInterests] = useState([]);
+  const [priority1, setPriority1] = useState(null); // 'mbti', 'personality', 'interests'
+  const [priority2, setPriority2] = useState(null);
+  const [priority3, setPriority3] = useState(null);
   const [loading, setLoading] = useState(false);
 
   // 기존 이상형 불러오기
@@ -42,6 +45,9 @@ const IdealTypeInputScreen = ({ navigation }) => {
       setPreferredMBTIs(idealType.preferredMBTI || []);
       setPersonalities(idealType.preferredPersonalities || []);
       setInterests(idealType.preferredInterests || []);
+      setPriority1(idealType.priority_1 || null);
+      setPriority2(idealType.priority_2 || null);
+      setPriority3(idealType.priority_3 || null);
     }
   }, [idealType]);
 
@@ -97,6 +103,13 @@ const IdealTypeInputScreen = ({ navigation }) => {
       return false;
     }
 
+    // 우선순위 검증 (선택사항이지만 설정하면 모두 다르게 설정해야 함)
+    const priorities = [priority1, priority2, priority3].filter(p => p !== null);
+    if (priorities.length > 0 && new Set(priorities).size !== priorities.length) {
+      Alert.alert('알림', '우선순위는 서로 다른 항목으로 설정해주세요');
+      return false;
+    }
+
     return true;
   };
 
@@ -116,6 +129,9 @@ const IdealTypeInputScreen = ({ navigation }) => {
         preferredMBTI: preferredMBTIs,
         preferredPersonalities: personalities,
         preferredInterests: interests,
+        priority_1: priority1,
+        priority_2: priority2,
+        priority_3: priority3,
       };
 
       // 이상형 저장
@@ -375,7 +391,7 @@ const IdealTypeInputScreen = ({ navigation }) => {
       </View>
 
       {/* 선호 관심사 */}
-          <View style={[styles.section, styles.interestsSection, styles.lastSection]}>
+          <View style={[styles.section, styles.interestsSection]}>
             <Text style={[styles.label, styles.interestsLabel]}>선호하는 관심사</Text>
             <View style={styles.chipContainer}>
               {INTERESTS.map((interest) => {
@@ -402,6 +418,246 @@ const IdealTypeInputScreen = ({ navigation }) => {
                 );
               })}
             </View>
+      </View>
+
+      {/* 매칭 중요 항목 우선순위 */}
+      <View style={[styles.section, styles.lastSection]}>
+        <Text style={styles.label}>매칭 중요 항목 우선순위</Text>
+        <Text style={styles.prioritySubtitle}>매칭 시 중요하게 생각하는 항목을 순위로 선택해주세요 (선택사항)</Text>
+        
+        {/* 1순위 */}
+        <View style={styles.priorityRow}>
+          <Text style={styles.priorityLabel}>1순위 (50점)</Text>
+          <View style={styles.priorityButtons}>
+            <TouchableOpacity
+              style={[
+                styles.priorityButton,
+                priority1 === 'mbti' && styles.priorityButtonActive,
+              ]}
+              onPress={() => {
+                if (priority1 === 'mbti') {
+                  setPriority1(null);
+                } else {
+                  setPriority1('mbti');
+                  if (priority2 === 'mbti') setPriority2(null);
+                  if (priority3 === 'mbti') setPriority3(null);
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.priorityButtonText, priority1 === 'mbti' && styles.priorityButtonTextActive]}>
+                MBTI
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.priorityButton,
+                priority1 === 'personality' && styles.priorityButtonActive,
+              ]}
+              onPress={() => {
+                if (priority1 === 'personality') {
+                  setPriority1(null);
+                } else {
+                  setPriority1('personality');
+                  if (priority2 === 'personality') setPriority2(null);
+                  if (priority3 === 'personality') setPriority3(null);
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.priorityButtonText, priority1 === 'personality' && styles.priorityButtonTextActive]}>
+                성격
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.priorityButton,
+                priority1 === 'interests' && styles.priorityButtonActive,
+              ]}
+              onPress={() => {
+                if (priority1 === 'interests') {
+                  setPriority1(null);
+                } else {
+                  setPriority1('interests');
+                  if (priority2 === 'interests') setPriority2(null);
+                  if (priority3 === 'interests') setPriority3(null);
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.priorityButtonText, priority1 === 'interests' && styles.priorityButtonTextActive]}>
+                관심사
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* 2순위 */}
+        <View style={styles.priorityRow}>
+          <Text style={styles.priorityLabel}>2순위 (30점)</Text>
+          <View style={styles.priorityButtons}>
+            <TouchableOpacity
+              style={[
+                styles.priorityButton,
+                priority2 === 'mbti' && styles.priorityButtonActive,
+                priority1 === 'mbti' && styles.priorityButtonDisabled,
+              ]}
+              onPress={() => {
+                if (priority1 === 'mbti') return;
+                if (priority2 === 'mbti') {
+                  setPriority2(null);
+                } else {
+                  setPriority2('mbti');
+                  if (priority3 === 'mbti') setPriority3(null);
+                }
+              }}
+              disabled={priority1 === 'mbti'}
+              activeOpacity={0.8}
+            >
+              <Text style={[
+                styles.priorityButtonText,
+                priority2 === 'mbti' && styles.priorityButtonTextActive,
+                priority1 === 'mbti' && styles.priorityButtonTextDisabled,
+              ]}>
+                MBTI
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.priorityButton,
+                priority2 === 'personality' && styles.priorityButtonActive,
+                priority1 === 'personality' && styles.priorityButtonDisabled,
+              ]}
+              onPress={() => {
+                if (priority1 === 'personality') return;
+                if (priority2 === 'personality') {
+                  setPriority2(null);
+                } else {
+                  setPriority2('personality');
+                  if (priority3 === 'personality') setPriority3(null);
+                }
+              }}
+              disabled={priority1 === 'personality'}
+              activeOpacity={0.8}
+            >
+              <Text style={[
+                styles.priorityButtonText,
+                priority2 === 'personality' && styles.priorityButtonTextActive,
+                priority1 === 'personality' && styles.priorityButtonTextDisabled,
+              ]}>
+                성격
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.priorityButton,
+                priority2 === 'interests' && styles.priorityButtonActive,
+                priority1 === 'interests' && styles.priorityButtonDisabled,
+              ]}
+              onPress={() => {
+                if (priority1 === 'interests') return;
+                if (priority2 === 'interests') {
+                  setPriority2(null);
+                } else {
+                  setPriority2('interests');
+                  if (priority3 === 'interests') setPriority3(null);
+                }
+              }}
+              disabled={priority1 === 'interests'}
+              activeOpacity={0.8}
+            >
+              <Text style={[
+                styles.priorityButtonText,
+                priority2 === 'interests' && styles.priorityButtonTextActive,
+                priority1 === 'interests' && styles.priorityButtonTextDisabled,
+              ]}>
+                관심사
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* 3순위 */}
+        <View style={styles.priorityRow}>
+          <Text style={styles.priorityLabel}>3순위 (20점)</Text>
+          <View style={styles.priorityButtons}>
+            <TouchableOpacity
+              style={[
+                styles.priorityButton,
+                priority3 === 'mbti' && styles.priorityButtonActive,
+                (priority1 === 'mbti' || priority2 === 'mbti') && styles.priorityButtonDisabled,
+              ]}
+              onPress={() => {
+                if (priority1 === 'mbti' || priority2 === 'mbti') return;
+                if (priority3 === 'mbti') {
+                  setPriority3(null);
+                } else {
+                  setPriority3('mbti');
+                }
+              }}
+              disabled={priority1 === 'mbti' || priority2 === 'mbti'}
+              activeOpacity={0.8}
+            >
+              <Text style={[
+                styles.priorityButtonText,
+                priority3 === 'mbti' && styles.priorityButtonTextActive,
+                (priority1 === 'mbti' || priority2 === 'mbti') && styles.priorityButtonTextDisabled,
+              ]}>
+                MBTI
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.priorityButton,
+                priority3 === 'personality' && styles.priorityButtonActive,
+                (priority1 === 'personality' || priority2 === 'personality') && styles.priorityButtonDisabled,
+              ]}
+              onPress={() => {
+                if (priority1 === 'personality' || priority2 === 'personality') return;
+                if (priority3 === 'personality') {
+                  setPriority3(null);
+                } else {
+                  setPriority3('personality');
+                }
+              }}
+              disabled={priority1 === 'personality' || priority2 === 'personality'}
+              activeOpacity={0.8}
+            >
+              <Text style={[
+                styles.priorityButtonText,
+                priority3 === 'personality' && styles.priorityButtonTextActive,
+                (priority1 === 'personality' || priority2 === 'personality') && styles.priorityButtonTextDisabled,
+              ]}>
+                성격
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.priorityButton,
+                priority3 === 'interests' && styles.priorityButtonActive,
+                (priority1 === 'interests' || priority2 === 'interests') && styles.priorityButtonDisabled,
+              ]}
+              onPress={() => {
+                if (priority1 === 'interests' || priority2 === 'interests') return;
+                if (priority3 === 'interests') {
+                  setPriority3(null);
+                } else {
+                  setPriority3('interests');
+                }
+              }}
+              disabled={priority1 === 'interests' || priority2 === 'interests'}
+              activeOpacity={0.8}
+            >
+              <Text style={[
+                styles.priorityButtonText,
+                priority3 === 'interests' && styles.priorityButtonTextActive,
+                (priority1 === 'interests' || priority2 === 'interests') && styles.priorityButtonTextDisabled,
+              ]}>
+                관심사
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
         </ScrollView>
 
@@ -679,6 +935,61 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
     alignSelf: 'center',
     marginTop: 16,
+  },
+  prioritySubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    marginBottom: 16,
+    marginLeft: 4,
+  },
+  priorityRow: {
+    marginBottom: 16,
+  },
+  priorityLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  priorityButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  priorityButton: {
+    flex: 1,
+    paddingVertical: 12,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: '#FFE4E9',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 1,
+  },
+  priorityButtonActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  priorityButtonDisabled: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
+    opacity: 0.5,
+  },
+  priorityButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  priorityButtonTextActive: {
+    color: COLORS.white,
+  },
+  priorityButtonTextDisabled: {
+    color: '#94A3B8',
   },
 });
 

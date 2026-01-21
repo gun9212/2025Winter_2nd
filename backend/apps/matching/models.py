@@ -26,6 +26,14 @@ class Match(models.Model):
     
     matched_at = models.DateTimeField(auto_now_add=True, verbose_name='매칭 시간')
     matched_criteria = models.JSONField(default=dict, verbose_name='매칭된 조건')
+    match_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name='매칭 점수',
+        help_text='매칭 점수 (0.00 ~ 100.00)'
+    )
     
     class Meta:
         db_table = 'matches'

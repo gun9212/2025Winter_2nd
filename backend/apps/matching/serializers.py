@@ -30,7 +30,7 @@ class MatchSerializer(serializers.ModelSerializer):
             'id', 'user1', 'user2',
             'user1_latitude', 'user1_longitude',
             'user2_latitude', 'user2_longitude',
-            'matched_at', 'matched_criteria'
+            'matched_at', 'matched_criteria', 'match_score'
         ]
         read_only_fields = ['id', 'matched_at']
 

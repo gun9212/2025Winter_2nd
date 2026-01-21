@@ -690,6 +690,9 @@ class ApiClient {
         preferred_mbti: idealTypeData.preferredMBTI || [], // MBTI는 선택사항이지만 빈 배열로 전송
         preferred_personality: idealTypeData.preferredPersonalities || [],
         preferred_interests: idealTypeData.preferredInterests || [],
+        priority_1: idealTypeData.priority_1 && idealTypeData.priority_1.trim() !== '' ? idealTypeData.priority_1 : null,
+        priority_2: idealTypeData.priority_2 && idealTypeData.priority_2.trim() !== '' ? idealTypeData.priority_2 : null,
+        priority_3: idealTypeData.priority_3 && idealTypeData.priority_3.trim() !== '' ? idealTypeData.priority_3 : null,
         match_threshold: idealTypeData.matchThreshold || 3,
       };
 

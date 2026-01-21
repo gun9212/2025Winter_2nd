@@ -316,6 +316,7 @@ def match_check(request):
                     user1_longitude=user1_lon,
                     user2_latitude=user2_lat,
                     user2_longitude=user2_lon,
+                    match_score=Decimal(str(matchable['match_score'])).quantize(Decimal('0.01')),
                     matched_criteria={
                         'distance_m': matchable['distance_m'],
                         'match_score': matchable['match_score'],

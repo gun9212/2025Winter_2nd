@@ -380,6 +380,9 @@ export const AuthProvider = ({ children }) => {
         preferredMBTI: responseData.preferred_mbti || [],
         preferredPersonalities: responseData.preferred_personality || [],
         preferredInterests: responseData.preferred_interests || [],
+        priority_1: responseData.priority_1 || null,
+        priority_2: responseData.priority_2 || null,
+        priority_3: responseData.priority_3 || null,
         matchThreshold: responseData.match_threshold || 3,
       };
       
