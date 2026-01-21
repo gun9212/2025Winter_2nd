@@ -29,5 +29,8 @@ urlpatterns = [
     
     # 서비스 설정 관련 API
     path('consent/', views.update_consent, name='update_consent'),  # POST: 매칭 동의 업데이트
+    
+    # 개발용 유틸리티 API
+    path('dev/local-ip/', views.get_local_ip, name='get_local_ip'),  # GET: 로컬 IP 주소 조회
 ]
 

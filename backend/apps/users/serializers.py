@@ -82,7 +82,7 @@ class IdealTypeProfileSerializer(serializers.ModelSerializer):
         model = IdealTypeProfile
         fields = ['height_min', 'height_max', 'age_min', 'age_max', 
                  'preferred_gender', 'preferred_mbti', 'preferred_personality', 'preferred_interests', 
-                 'match_threshold']
+                 'priority_1', 'priority_2', 'priority_3', 'match_threshold']
         read_only_fields = ['created_at', 'updated_at']
     
     def validate(self, data):

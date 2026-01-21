@@ -224,6 +224,29 @@ class IdealTypeProfile(models.Model):
     preferred_personality = models.JSONField(default=list, verbose_name='선호 성격 유형 리스트')
     preferred_interests = models.JSONField(default=list, verbose_name='선호 관심사 리스트')
     
+    # 중요 항목 순위 (1순위, 2순위, 3순위)
+    priority_1 = models.CharField(
+        max_length=20,
+        choices=[('mbti', 'MBTI'), ('personality', '성격'), ('interests', '관심사')],
+        null=True,
+        blank=True,
+        verbose_name='1순위 중요 항목'
+    )
+    priority_2 = models.CharField(
+        max_length=20,
+        choices=[('mbti', 'MBTI'), ('personality', '성격'), ('interests', '관심사')],
+        null=True,
+        blank=True,
+        verbose_name='2순위 중요 항목'
+    )
+    priority_3 = models.CharField(
+        max_length=20,
+        choices=[('mbti', 'MBTI'), ('personality', '성격'), ('interests', '관심사')],
+        null=True,
+        blank=True,
+        verbose_name='3순위 중요 항목'
+    )
+    
     # 매칭 임계값 (기본값: 3개 이상 일치)
     match_threshold = models.IntegerField(default=3, verbose_name='매칭 임계값')
     

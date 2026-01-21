@@ -15,6 +15,7 @@ from django.core.mail import send_mail
 from decouple import config
 import boto3
 from botocore.exceptions import ClientError
+import socket
 from .models import UserLocation, User, AuthUser
 from .serializers import (
     UserLocationSerializer, UserSerializer, RegisterSerializer, LoginSerializer, 
@@ -1826,3 +1827,48 @@ class CustomTokenRefreshView(TokenRefreshView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])  # 개발용이므로 인증 불필요
+def get_local_ip(request):
+    """
+    개발 서버의 로컬 IP 주소를 반환하는 API
+    GET /api/users/dev/local-ip/
+    
+    개발 환경에서만 사용 가능하며, 앱이 로컬 서버에 연결할 때 사용합니다.
+    """
+    if not settings.DEBUG:
+        return Response(
+            {
+                'error': 'This endpoint is only available in DEBUG mode.'
+            },
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    try:
+        # 로컬 IP 주소 가져오기
+        # 소켓을 사용하여 외부 연결을 시도하지 않고 로컬 IP를 가져옴
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            # 실제로 연결하지 않고 로컬 IP를 가져옴
+            s.connect(('8.8.8.8', 80))
+            local_ip = s.getsockname()[0]
+        except Exception:
+            # 연결 실패 시 localhost 사용
+            local_ip = '127.0.0.1'
+        finally:
+            s.close()
+        
+        return Response({
+            'success': True,
+            'local_ip': local_ip,
+            'api_url': f'http://{local_ip}:8000/api'
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e),
+            'local_ip': '127.0.0.1',  # 폴백 값
+            'api_url': 'http://127.0.0.1:8000/api'
+        }, status=status.HTTP_200_OK)
